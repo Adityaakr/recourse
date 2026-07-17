@@ -7,8 +7,11 @@ import { ProviderMarket } from "./components/ProviderMarket.js";
 import { ExecutionTrace } from "./components/ExecutionTrace.js";
 import { SettlementReceipt } from "./components/SettlementReceipt.js";
 import { Analytics } from "./components/Analytics.js";
+import { Dialog } from "./components/Dialog.js";
+import { JobDetail } from "./components/JobDetail.js";
 import { StatusPill, Mono, Skeleton, Panel, AddrLink } from "./components/ui.js";
 import { eth } from "./lib/format.js";
+import { Maximize2 } from "lucide-react";
 import type { Hex } from "viem";
 
 export function App() {
@@ -16,12 +19,14 @@ export function App() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [view, setView] = useState<View>("dashboard");
   const [selected, setSelected] = useState<number | null>(null);
+  const [detail, setDetail] = useState<number | null>(null);
 
   useEffect(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
 
   const jobs = state?.jobs ?? [];
   useEffect(() => { if (selected === null && jobs.length) setSelected(jobs[jobs.length - 1].id); }, [jobs, selected]);
   const job = useMemo(() => jobs.find((j) => j.id === selected) ?? null, [jobs, selected]);
+  const detailJob = useMemo(() => jobs.find((j) => j.id === detail) ?? null, [jobs, detail]);
   const programId = (state?.deployment.programId ?? "0x") as Hex;
 
   return (
@@ -59,7 +64,7 @@ export function App() {
               <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 lg:grid-cols-[300px_1fr_320px]">
                 <div className="flex min-h-0 flex-col gap-2.5">
                   <JobComposer programId={programId} onFunded={() => {}} />
-                  <JobList jobs={jobs} selected={selected} onSelect={setSelected} className="min-h-0 flex-1" />
+                  <JobList jobs={jobs} selected={selected} onSelect={setSelected} onDetail={setDetail} className="min-h-0 flex-1" />
                 </div>
                 <ProviderMarket job={job} timeline={state.timeline} />
                 <div className="flex min-h-0 flex-col gap-2.5">
@@ -71,7 +76,7 @@ export function App() {
           ) : view === "analytics" ? (
             <Analytics jobs={jobs} timeline={state.timeline} />
           ) : view === "jobs" ? (
-            <div className="h-full"><JobsTable jobs={jobs} onSelect={(id) => { setSelected(id); setView("dashboard"); }} /></div>
+            <div className="h-full"><JobsTable jobs={jobs} onSelect={setDetail} /></div>
           ) : (
             <div className="h-full"><ProvidersTable jobs={jobs} /></div>
           )}
@@ -85,11 +90,15 @@ export function App() {
           <span className="ml-auto">hoodi 560048 · live on-chain data, nothing simulated</span>
         </footer>
       </div>
+
+      <Dialog open={detail !== null} onClose={() => setDetail(null)} label="Job detail" meta={detailJob ? `#${detailJob.id}` : undefined}>
+        {detailJob && <JobDetail job={detailJob} config={state?.config ?? null} />}
+      </Dialog>
     </div>
   );
 }
 
-function JobList({ jobs, selected, onSelect, className = "" }: { jobs: Job[]; selected: number | null; onSelect: (id: number) => void; className?: string }) {
+function JobList({ jobs, selected, onSelect, onDetail, className = "" }: { jobs: Job[]; selected: number | null; onSelect: (id: number) => void; onDetail: (id: number) => void; className?: string }) {
   return (
     <Panel label="Jobs" meta={`${jobs.length} routed`} className={className}>
       {jobs.length === 0 ? (
@@ -97,11 +106,15 @@ function JobList({ jobs, selected, onSelect, className = "" }: { jobs: Job[]; se
       ) : (
         <div className="border border-border">
           {[...jobs].reverse().map((j) => (
-            <button key={j.id} type="button" onClick={() => onSelect(j.id)} aria-pressed={selected === j.id}
-              className={`flex w-full items-center justify-between border-b border-border/60 px-2.5 py-2 text-left transition-colors last:border-0 ${selected === j.id ? "bg-accent/10" : "hover:bg-muted"}`}>
+            <div key={j.id} onClick={() => onSelect(j.id)}
+              className={`group flex w-full cursor-pointer items-center justify-between border-b border-border/60 px-2.5 py-2 text-left transition-colors last:border-0 ${selected === j.id ? "bg-accent/10" : "hover:bg-muted"}`}>
               <span className="flex items-center gap-2.5"><Mono className={`text-[12px] font-semibold ${selected === j.id ? "text-accent" : ""}`}>#{j.id}</Mono><span className="text-[11px] uppercase tracking-wide text-muted-fg">{j.spec.policy}</span></span>
-              <StatusPill status={j.status} />
-            </button>
+              <span className="flex items-center gap-2">
+                <button type="button" onClick={(e) => { e.stopPropagation(); onDetail(j.id); }} aria-label={`Open job ${j.id} detail`}
+                  className="text-muted-fg opacity-0 transition-opacity hover:text-accent group-hover:opacity-100"><Maximize2 size={12} /></button>
+                <StatusPill status={j.status} />
+              </span>
+            </div>
           ))}
         </div>
       )}
