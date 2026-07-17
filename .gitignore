@@ -1,0 +1,18 @@
+# binaries / toolchain artifacts
+bin/
+target/
+node_modules/
+dist/
+
+# secrets — never commit keys; .env.example is the documented surface
+.env
+.env.*
+!.env.example
+
+# data
+*.sqlite
+*.sqlite-journal
+
+# local
+.DS_Store
+.prism/runs/

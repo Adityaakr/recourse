@@ -1,0 +1,85 @@
+# PLAN — recourse
+
+Outcome router for AI agents on vara.eth (hoodi). Agents fund jobs with ETH plus a
+machine-checkable success test; bonded provider bots quote sub-second on the injected
+lane; the program awards deterministically; a verifier grades; the program settles.
+Pay on pass. Refund plus bond slash on fail. The failure path is the demo.
+
+Kickoff prompt is the spec of record. This file records decisions and deviations.
+Project memory (evidence-cited facts, danger zones) lives in `.prism/project-model.md`.
+
+## Milestones
+
+- M0 — toolchain + version decision + counter validation (this file, this commit)
+- M1 — the sails program: market/settlement/reputation services, full state machine,
+  gtest invariant suite, sol ABI generation
+- M2 — deploy to hoodi + keeper + value smoke tests (fund, payout, claimValue)
+- M3 — provider bots (3 personas) + verifier service (sandboxed vitest, node 20)
+- M4 — indexer (mirror logs -> sqlite) + react/vite frontend
+- M5 — demo polish: act one (failure path), act two (success path)
+
+## Decisions
+
+### D1 (M0): sails-rs 2.0.0, not 1.0.x
+The kickoff prompt said 1.0.0; latest is 2.0.0 (2026-07-06). sails-cli 2.0.0 scaffolds
+against 2.0.0 and the generated project builds and tests green (see M0 validation below).
+Staying on the current major avoids building on an API the toolchain no longer emits.
+Drift from the 1.0.0-beta.2-era examples we planned from:
+- `#[sails_rs::sails_type]` replaces manual Encode/TypeInfo/ReflectHash derives
+- `#[export(scale)]` gives a per-method SCALE-only lane (clean escape from sol-ABI
+  type limits; the u8 constraint is now scoped per export)
+- services hold state via `StateMut<Item = T>` generics rather than bare RefCell fields
+- `Syscall::with_message_source` / `with_block_height` test shims allow off-chain
+  service unit tests without gtest
+- gtest: `GtestEnv::system_default()`, event streams via `client.listen()`
+Reversal cost: one commit (re-pin workspace to 1.0.1 and de-drift idioms).
+
+### D2 (M0): payouts are pull-payments, push is the fallback
+`gcore::msg::send(destination, payload, value)` IS available under the ethexe feature
+(sails-rs 2.0.0 `src/client/gstd_env.rs:126`), so push payouts to arbitrary actors are
+API-possible. We still design payouts as internal credit + `claim()` returning
+`CommandReply::with_value`: it is the demonstrated path (vault example), it makes the
+recipient the caller (no unverified third-party-send behavior on the critical path),
+and it matches the L1 `mirror.claimValue` UX. Push-send stays as a recorded option if
+claim UX proves awkward in the demo.
+
+### D3 (M0): ethexe CLI built from source
+`get.gear.rs/ethexe` is a dead S3 key and the v2.0.0 release binary is Linux x86-64
+only; this machine is macOS arm64. Building `ethexe-cli` from the gear repo at tag
+v2.0.0 (background at M0; only needed at M2). If the source build fails, fallback is
+deploying via the @vara-eth/api TS SDK (router uploadCode/createProgram) instead of
+the CLI — decide at M2 if it comes to that.
+
+## M0 validation results
+
+- sails-cli 2.0.0 installed; `cargo sails new counter-check --eth` scaffolds a
+  workspace pinned to sails-rs 2.0.0 (app / client / tests layout, edition 2024).
+- `Syscall::block_timestamp() -> u64` exists in 2.0.0 (`src/gstd/syscalls.rs:64`).
+  Hoodi wall-clock granularity still to be measured live at M2 before deadline
+  parameters are locked (spec fallback: 45s windows if coarse).
+- counter build green: `counter_check.{idl,wasm,opt.wasm}` in `target/wasm32-gear/release/`.
+- full test suite green: 3 off-chain service unit tests (Syscall shims) + 1 gtest
+  (deploy, call, event stream), 0 failures.
+- `#[export(payable)]` confirmed per-method in 2.0.0 despite doc omission
+  (sails-macros-core 2.0.0 `src/shared.rs:100` parses it; `payable_check()` at :444
+  panics "'{fn}' accepts no value" when value hits a non-payable method).
+- `cargo sails sol` works (needs the target dir to pre-exist or it errors with
+  os error 2). Generated surface: EVM events, `#[export(scale)]` methods correctly
+  excluded from ABI, callback arity matches the known replyOn_ trap.
+- `cargo sails client-js` works (positional out path). NOTE: generated TS client
+  imports @gear-js/api + sails-js, not @vara-eth/api — at M3 use it for payload
+  encoding only; transport stays @vara-eth/api createInjectedTransaction.
+- ethexe CLI: source build needs `protoc` (brew install protobuf done); rebuild in
+  flight at M0 close. Only needed at M2; TS-SDK deploy is the fallback (D3).
+
+## Open items carried to M1/M2
+
+- Value attached to an Err return under `#[export(payable, unwrap_result)]`: write the
+  gtest FIRST at M1 (expected: Err panics the handler, gear traps, value refunds; must
+  be proven, not assumed).
+- Verifier auth: on-chain check is `message_source()` allowlist; eip-191 signature is
+  emitted for off-chain audit only. Confirm at M3.
+- `expire_job` is permissionless (anyone can call past deadline); keeper is convenience,
+  not a trust assumption.
+- Program address derivation from create salt: confirm at M2 deploy.
+- kzg-wasm + vite compatibility: check at M4 before frontend SDK wiring.
