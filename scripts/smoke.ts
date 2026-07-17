@@ -30,7 +30,10 @@ const d = readDeployment();
 const programId = d.programId;
 
 const publicClient = createPublicClient({ chain: hoodi, transport: http() });
-const provider = new WsVaraEthProvider(VALIDATOR_WS[0]);
+// Validators sync programs independently; a freshly-created program may not be
+// on every node yet. Connect to the first validator that actually has this
+// program's state (see connectToSyncedValidator below).
+let provider: WsVaraEthProvider;
 
 // Status enum ordinals (must match program Status order).
 const STATUS = [
@@ -175,9 +178,36 @@ async function createJob(policy: "cheapest" | "assured"): Promise<number> {
   return id;
 }
 
+/** Connect to the first validator that has this program's state, retrying a
+ *  few rounds for propagation after a fresh deploy. */
+async function connectToSyncedValidator() {
+  for (let round = 0; round < 6; round++) {
+    for (const url of VALIDATOR_WS) {
+      const p = new WsVaraEthProvider(url);
+      try {
+        await p.connect();
+        const a = await createVaraEthApi(p, publicClient, ROUTER_ADDRESS, signer("deployer"));
+        // probe: a config read that throws if the validator lacks the state.
+        await a.call.program.calculateReplyForHandle(
+          `0x${"00".repeat(20)}`,
+          programId,
+          encodeCall("Settlement", "GetConfig", []),
+        );
+        provider = p;
+        api = a;
+        console.log(`  connected to ${url}`);
+        return;
+      } catch {
+        await p.disconnect?.();
+      }
+    }
+    await sleep(5000);
+  }
+  throw new Error("no validator has the program state yet");
+}
+
 async function main() {
-  await provider.connect();
-  api = await createVaraEthApi(provider, publicClient, ROUTER_ADDRESS, signer("deployer"));
+  await connectToSyncedValidator();
 
   console.log("=== Job 1: Open -> Paid (assured, steady bot passes) ===");
   await ensureRegistered("bot-steady");
