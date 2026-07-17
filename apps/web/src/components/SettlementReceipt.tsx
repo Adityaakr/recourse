@@ -5,11 +5,12 @@
 import type { Job, Config } from "../lib/api.js";
 import { eth, ms } from "../lib/format.js";
 import { Panel, Mono, StatusPill, Empty } from "./ui.js";
+import { Receipt } from "lucide-react";
 
 const TERMINAL = ["Paid", "Refunded", "Expired"];
 
 export function SettlementReceipt({ job, config }: { job: Job | null; config: Config | null }) {
-  if (!job) return <Panel title="Settlement receipt"><Empty>The final receipt shows here — paid, or refunded and slashed.</Empty></Panel>;
+  if (!job) return <Panel title="Settlement receipt" icon={<Receipt size={16} />} tone="pass"><Empty>The final receipt shows here — paid, or refunded and slashed.</Empty></Panel>;
 
   const settled = TERMINAL.includes(job.status);
   const winnerQuote = job.quotes.find((q) => q.provider.toLowerCase() === job.winner?.toLowerCase());
@@ -19,7 +20,7 @@ export function SettlementReceipt({ job, config }: { job: Job | null; config: Co
   const slash = config ? BigInt(config.slashWei) : 0n;
 
   return (
-    <Panel title="Settlement receipt" hint={`Job #${job.id}`} right={<StatusPill status={job.status} />}>
+    <Panel title="Settlement receipt" hint={`Job #${job.id}`} icon={<Receipt size={16} />} tone={paid ? "pass" : settled ? "fail" : "neutral"} right={<StatusPill status={job.status} />}>
       {!settled ? (
         <Empty>Settlement pending — the verdict decides pay or refund.</Empty>
       ) : (
@@ -30,7 +31,7 @@ export function SettlementReceipt({ job, config }: { job: Job | null; config: Co
             <div className={`text-sm font-semibold ${paid ? "text-pass" : "text-fail"}`}>
               {paid ? "Paid on success" : "Refunded + bond slashed"}
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-muted-fg">
               {paid
                 ? "Success criteria met. The provider was paid the quoted price; the escrow difference returned to the requester."
                 : "Success criteria not met. Escrow refunded to the requester and the provider's bond was slashed — enforced by the protocol."}
@@ -59,7 +60,7 @@ export function SettlementReceipt({ job, config }: { job: Job | null; config: Co
           </dl>
 
           {job.verdict && (
-            <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-fg">
               Verdict signed by the verifier · evidence <Mono>{job.verdict.evidenceHash.slice(0, 12)}…</Mono>
             </div>
           )}
@@ -73,7 +74,7 @@ function Row({ label, tone, children }: { label: string; tone?: "pass" | "fail";
   const toneCls = tone === "pass" ? "text-pass" : tone === "fail" ? "text-fail" : "";
   return (
     <div className="flex items-center justify-between px-3.5 py-2.5">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dt className="text-xs text-muted-fg">{label}</dt>
       <dd className={`text-sm font-medium ${toneCls}`}>{children}</dd>
     </div>
   );

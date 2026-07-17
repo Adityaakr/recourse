@@ -6,9 +6,10 @@
 import type { Job, TimelineEvent } from "../lib/api.js";
 import { eth, ms, shortAddr } from "../lib/format.js";
 import { Panel, Mono, AddrLink, Empty, LaneBadge } from "./ui.js";
+import { Gavel } from "lucide-react";
 
 export function ProviderMarket({ job, timeline }: { job: Job | null; timeline: TimelineEvent[] }) {
-  if (!job) return <Panel title="Live provider market"><Empty>Fund a job to open the auction.</Empty></Panel>;
+  if (!job) return <Panel title="Live provider market" icon={<Gavel size={16} />} tone="injected"><Empty>Fund a job to open the auction.</Empty></Panel>;
 
   const measuredFor = (provider: string) =>
     timeline.find((e) => e.kind === "QuoteSubmitted" && String(e.detail.provider).toLowerCase() === provider.toLowerCase())?.measuredMs;
@@ -20,6 +21,7 @@ export function ProviderMarket({ job, timeline }: { job: Job | null; timeline: T
     <Panel
       title="Live provider market"
       hint={`Job #${job.id} · ${job.spec.policy} · ${job.quotes.length} quote${job.quotes.length === 1 ? "" : "s"}`}
+      icon={<Gavel size={16} />} tone="injected"
       right={<LaneBadge lane="injected" />}
     >
       {job.quotes.length === 0 ? (
@@ -41,8 +43,8 @@ export function ProviderMarket({ job, timeline }: { job: Job | null; timeline: T
                   </div>
                   <Mono className="text-sm font-semibold">{eth(q.priceWei)} ETH</Mono>
                 </div>
-                <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>promised <Mono className="text-foreground">{ms(q.promisedLatencyMs)}</Mono></span>
+                <div className="mt-2 flex items-center gap-4 text-xs text-muted-fg">
+                  <span>promised <Mono className="text-fg">{ms(q.promisedLatencyMs)}</Mono></span>
                   {meas !== undefined && (
                     <span className="text-lane-injected">measured <Mono>{ms(meas)}</Mono> · validator-signed ✓</span>
                   )}
@@ -56,7 +58,7 @@ export function ProviderMarket({ job, timeline }: { job: Job | null; timeline: T
       {job.awardReason && (
         <div className="mt-4 rounded-lg border border-pass/30 bg-pass/5 px-3 py-2.5">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-pass">Award decision</div>
-          <p className="mt-1 text-xs text-muted-foreground">{job.awardReason}</p>
+          <p className="mt-1 text-xs text-muted-fg">{job.awardReason}</p>
           {winner && <p className="mt-1 text-xs">Winner: <span className="font-medium">{shortAddr(job.winner)}</span></p>}
         </div>
       )}

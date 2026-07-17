@@ -6,6 +6,7 @@ import { useAccount } from "wagmi";
 import { HOODI_TX } from "../lib/format.js";
 import { useFundJob, type JobTerms } from "../lib/actions.js";
 import { Panel, Mono } from "./ui.js";
+import { FilePlus2 } from "lucide-react";
 import type { Hex } from "viem";
 
 const POLICIES: { id: JobTerms["policy"]; label: string; blurb: string }[] = [
@@ -31,12 +32,12 @@ export function JobComposer({ programId, onFunded }: { programId: Hex; onFunded:
   }
 
   return (
-    <Panel title="Job composer" hint="Interval-merge coding task · funded on L1">
+    <Panel title="Job composer" hint="Interval-merge coding task · funded on L1" icon={<FilePlus2 size={16} />} tone="primary">
       <div className="space-y-4">
         <Field label="Task">
           <div className="rounded-lg border bg-muted/50 px-3 py-2.5">
             <div className="text-sm font-medium">Merge overlapping intervals</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">Graded by hidden unit tests · unit-tests-v1</div>
+            <div className="mt-0.5 text-xs text-muted-fg">Graded by hidden unit tests · unit-tests-v1</div>
           </div>
         </Field>
 
@@ -66,7 +67,7 @@ export function JobComposer({ programId, onFunded }: { programId: Hex; onFunded:
                 }`}
               >
                 <div className="text-sm font-medium">{p.label}</div>
-                <div className="text-xs text-muted-foreground">{p.blurb}</div>
+                <div className="text-xs text-muted-fg">{p.blurb}</div>
               </button>
             ))}
           </div>
@@ -85,7 +86,7 @@ export function JobComposer({ programId, onFunded }: { programId: Hex; onFunded:
           </p>
         )}
         {tx && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-fg">
             Funded — <a className="text-lane-l1 hover:underline" href={HOODI_TX(tx)} target="_blank" rel="noreferrer">
               <Mono>{tx.slice(0, 10)}…</Mono>
             </a> on L1. Watch the market fill →
@@ -99,7 +100,7 @@ export function JobComposer({ programId, onFunded }: { programId: Hex; onFunded:
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="mb-1.5 block text-xs font-medium text-muted-fg">{label}</span>
       {children}
     </label>
   );
@@ -109,7 +110,7 @@ function NumInput({ value, onChange }: { value: string; onChange: (v: string) =>
   return (
     <input
       type="text" inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value)}
-      className="tnum w-full rounded-lg border bg-background px-3 py-2 text-sm focus-visible:border-primary"
+      className="tnum w-full rounded-lg border bg-bg px-3 py-2 text-sm focus-visible:border-primary"
     />
   );
 }
