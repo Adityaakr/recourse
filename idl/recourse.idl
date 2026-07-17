@@ -1,0 +1,205 @@
+
+!@sails: 2.0.0
+
+service Market@0x826b9458701ee226 {
+    events {
+        JobAwarded {
+            job_id: u64,
+            winner: Address,
+            reason: String,
+        },
+        JobCreated {
+            job_id: u64,
+            requester: Address,
+            max_price_wei: u128,
+            escrow_wei: u128,
+        },
+        ProviderRegistered {
+            provider: Address,
+            bond_wei: u128,
+        },
+        QuoteSubmitted {
+            job_id: u64,
+            provider: Address,
+            price_wei: u128,
+            promised_latency_ms: u32,
+        },
+    }
+    functions {
+        /// Award after the quote window closes. Callable by anyone (frontend
+        /// calls it, keeper is the backstop). Deterministic and explainable:
+        /// the reason (policy + losing quote indices) is stored on the job.
+        /// With no valid quotes the job expires and escrow is refunded.
+        AwardJob(job_id: u64) throws String;
+        /// Fund a job. Escrow must cover the worst case (value >= max price);
+        /// at settlement the winner gets the quoted price and the difference
+        /// returns to the requester.
+        /// Payable requires the ethabi transport (macro-enforced), so params
+        /// are SolValue-friendly: enums ride as strings, hashes as [u8; 32].
+        @payable
+        CreateJob(max_price_wei: u128, deadline_secs: u32, verifier_kind: String, criteria_hash: [u8; 32], policy: String, quote_window_secs: u32) -> u64 throws String;
+        @codec: scale
+        @query
+        GetJob(job_id: u64) -> Option<Job>;
+        @codec: scale
+        @query
+        ListJobs(status: Option<Status>, cursor: u64, limit: u32) -> [Job];
+        /// Post a bond and become a quotable provider. One provider per owner.
+        @payable
+        RegisterProvider() throws String;
+        /// Winner acknowledges the award. Optional on-camera beat between
+        /// Awarded and Delivered.
+        StartJob(job_id: u64) throws String;
+        /// Quote on an open job. Injected-lane method: never carries value.
+        SubmitQuote(job_id: u64, price_wei: u128, promised_latency_ms: u32) throws String;
+        @payable
+        TopUpBond() -> u128 throws String;
+        /// Withdraw the full bond and deregister. Only with no active job.
+        /// Value rides the reply to the caller (vault pattern).
+        @returns_value
+        WithdrawBond() -> u128 throws String;
+    }
+    types {
+        @sol_type: address
+        struct Address(H160);
+        struct Job {
+            id: u64,
+            spec: JobSpec,
+            status: Status,
+            created_at: u64,
+            quotes: [Quote],
+            winner: Option<ActorId>,
+            awarded_at: Option<u64>,
+            receipt: Option<Receipt>,
+            verdict: Option<Verdict>,
+            settled: Option<Outcome>,
+            award_reason: Option<String>,
+        }
+        struct JobSpec {
+            requester: ActorId,
+            escrow_wei: u128,
+            max_price_wei: u128,
+            deadline_secs: u32,
+            verifier_kind: VerifierKind,
+            criteria_hash: H256,
+            policy: Policy,
+            quote_window_secs: u32,
+        }
+        enum Outcome {
+            Paid,
+            Refunded,
+        }
+        enum Policy {
+            Cheapest,
+            Assured,
+        }
+        struct Quote {
+            provider: ActorId,
+            price_wei: u128,
+            promised_latency_ms: u32,
+            submitted_at: u64,
+        }
+        struct Receipt {
+            output_hash: H256,
+            model_tag: String,
+            submitted_at: u64,
+        }
+        enum Status {
+            Open,
+            Awarded,
+            Running,
+            Delivered,
+            Verified,
+            Paid,
+            Refunded,
+            Expired,
+        }
+        struct Verdict {
+            pass: bool,
+            evidence_hash: H256,
+            verifier: ActorId,
+            submitted_at: u64,
+        }
+        enum VerifierKind {
+            UnitTestsV1,
+            JsonSchemaV1,
+        }
+    }
+}
+
+service Settlement@0xc0fc606f9a1d8fff {
+    events {
+        JobExpired {
+            job_id: u64,
+        },
+        JobSettled {
+            job_id: u64,
+            paid: u32,
+            paid_wei: u128,
+            refunded_wei: u128,
+            slashed_wei: u128,
+        },
+        ReceiptSubmitted {
+            job_id: u64,
+            output_hash: [u8; 32],
+        },
+        VerdictSubmitted {
+            job_id: u64,
+            pass: u32,
+        },
+    }
+    functions {
+        /// Anyone can expire an overdue job (keeper is the usual caller, but
+        /// liveness must not depend on it). Terminal; counts as a fail.
+        ExpireJob(job_id: u64) throws String;
+        @codec: scale
+        @query
+        GetConfig() -> Config;
+        @codec: scale
+        @query
+        GetProvider(actor: ActorId) -> Option<Provider>;
+        @query
+        GetRetainedWei() -> u128;
+        @codec: scale
+        @query
+        ListProviders() -> [Provider];
+        /// Winner delivers. The program stamps time itself; a receipt past the
+        /// deadline is rejected so delivery and expiry cannot race.
+        @codec: scale
+        SubmitReceipt(job_id: u64, output_hash: H256, model_tag: String) throws String;
+        /// Allowlisted verifier grades the delivery; settlement runs inline.
+        @codec: scale
+        SubmitVerdict(job_id: u64, pass: bool, evidence_hash: H256) throws String;
+    }
+    types {
+        struct Config {
+            verifier: ActorId,
+            bond_wei: u128,
+            slash_wei: u128,
+            slash_to_requester_bps: u32,
+        }
+        struct Provider {
+            owner: ActorId,
+            bond_wei: u128,
+            jobs_won: u32,
+            jobs_passed: u32,
+            jobs_failed: u32,
+            jobs_expired: u32,
+            active_job: Option<u64>,
+            registered_at: u64,
+        }
+    }
+}
+
+program Recourse {
+    constructors {
+        /// Deploy-time config: the allowlisted verifier and the economics
+        /// constants. No admin key over settled outcomes — no method can
+        /// touch a settled job.
+        Create(verifier: ActorId, bond_wei: u128, slash_wei: u128, slash_to_requester_bps: u32);
+    }
+    services {
+        Market@0x826b9458701ee226,
+        Settlement@0xc0fc606f9a1d8fff,
+    }
+}

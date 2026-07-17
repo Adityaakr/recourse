@@ -67,6 +67,14 @@
 12. **kzg-wasm in the browser**: @vara-eth/api peer-deps `kzg-wasm@1.0.0`; vite needs wasm-friendly config. Untested locally. Check at M4 before wiring the frontend SDK.
 13. **Indexer ABI source**: mirror re-emits program events as EVM logs; decoding needs the `cargo sails sol` generated ABI. Run `sol` generation at M1 (also catches the u8 trap early) and commit the ABI artifact for the indexer.
 
+## M1 program facts (2026-07-17, all test-verified)
+- Program: `program/app/src/lib.rs` (~890 logic LoC). 21 tests green (16 unit via `Syscall::with_*` shims + 5 gtest vs real wasm).
+- **Value-on-Err resolved**: Err from payable method leaves zero value with program (`program/tests/gtest.rs` err_reply test). Danger zone 3 closed.
+- **ethabi transport rules (empirical, sails-rs 2.0.0)**: `payable` requires ethabi transport (`#[export(scale, ethabi, payable)]`); bool AND u8 rejected in event fields (use u32); H256 not SolValue (SCALE-only exports fine); `[u8;32]` event field → sol `uint8[32]` not `bytes32`.
+- gtest-ethexe: `sails_rs::gtest::ethexe::System` (NOT plain gtest::System) with GtestEnv; per-call `.with_actor_id()/.with_value()`; blocks 3s; program→user value leaves program balance but does not credit users (mirrors L1 claimValue).
+- Test-macro pattern for service unit tests: `Market::new(&state).expose(0)` via macro_rules (exposure type is unnameable).
+- Client regenerates from app at build (client/build.rs `sails_rs::build_client::<Program>()`); tests use `Actor<RecourseClientProgram, GtestEnv>`.
+
 ## Conventions (adopted)
 - pnpm workspace + cargo workspace side by side; layout per kickoff prompt §4.
 - Every on-chain interaction through `packages/sdk`; no raw calls in components. TS strict, no `any` on exports. pino logs in services.
@@ -83,6 +91,10 @@
 - 2026-07-17 M0 (PLAN.md D1): sails-rs 2.0.0 adopted; counter validation green; drift catalogued.
 - 2026-07-17 M0 (PLAN.md D2): payouts are pull-payments; push-send (`gcore::msg::send` w/ value) verified available as fallback.
 - 2026-07-17 M0 (PLAN.md D3): ethexe CLI from source on macOS; TS-SDK deploy is the M2 fallback.
+- 2026-07-17 M1: program built + 23 tests green. Adversarial skeptic (opus) refuted the bond invariant → **C1 fixed**: bond floor (`bond_wei >= config.bond_wei`) enforced in `submit_quote` (lib.rs) AND the `award_job` candidate filter; a slashed-below-floor provider must top up before quoting. **S1 fixed**: requester cannot quote its own job. Both have regression tests. Skeptic confirmed sound: settle-exactly-once, arithmetic (no under/overflow), value-on-Err, award determinism, boundary conditions (window/deadline strict-inequality, no overlap).
+
+## Lessons (measured)
+- 2026-07-17 M1: the adversarial skeptic earned its cost — found a real economic bug (bond evaporates after 2 fails) that all 21 green tests missed because none drove a provider through two slashes. Coverage gap was structural: happy-path + single-adversarial-step tests don't catch multi-step state erosion. Bank: for money state machines, add "run the same actor through N consecutive penalties" tests.
 
 ## Lessons
 - (reserved for prism-retro)
