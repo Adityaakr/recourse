@@ -68,14 +68,17 @@ async fn awarded_job(
         .unwrap()
         .unwrap();
 
+    // gtest's block_timestamp is in MILLISECONDS (3000/block), so the window
+    // and deadline are sized in ms here (30_000 = 30 "gtest seconds"). The
+    // program does not scale time; on-chain these are passed in seconds.
     let job_id = market
         .create_job(
             MAX_PRICE,
-            30,
+            30_000,
             "unit-tests-v1".into(),
             [7u8; 32],
             "cheapest".into(),
-            30,
+            30_000,
         )
         .with_actor_id(actor(REQUESTER))
         .with_value(ESCROW)
@@ -97,7 +100,7 @@ async fn awarded_job(
         .unwrap();
 
     // Push program time past the 30s quote window (blocks are 3s).
-    for _ in 0..12 {
+    for _ in 0..16 {
         env.run_next_block();
     }
 
@@ -220,7 +223,7 @@ async fn expiry_refunds_and_counts_against_provider() {
         .unwrap();
     assert!(early.unwrap_err().contains("not past"));
 
-    for _ in 0..12 {
+    for _ in 0..16 {
         env.run_next_block();
     }
 
@@ -271,7 +274,7 @@ async fn settlement_is_exactly_once() {
         .unwrap();
     assert!(again.is_err());
 
-    for _ in 0..12 {
+    for _ in 0..16 {
         env.run_next_block();
     }
     let expire: Result<(), String> = settlement

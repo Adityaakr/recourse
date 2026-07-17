@@ -56,10 +56,11 @@ const SLASH_TO_REQUESTER_BPS = Number(
   process.env.RECOURSE_SLASH_TO_REQUESTER_BPS ?? "5000",
 );
 
-// WVARA seeded into the program's executable balance at create time. 12-dec
-// WVARA; 2000 WVARA is generous headroom for the two-act demo. The health
-// script reports the live balance so we can top up if a long run drains it.
-const EXEC_BALANCE_WVARA = 2000n * 10n ** 12n;
+// WVARA seeded into the program's executable balance at create time (12-dec
+// WVARA). Reverse gas: every message the program processes is paid from here.
+// 1500 WVARA is enough for the two-act demo; a top-up script tops it up if a
+// long run drains it, and the health script reports the live level.
+const EXEC_BALANCE_WVARA = 1500n * 10n ** 12n;
 
 /** A permit deadline one hour out, in unix SECONDS (EIP-2612 compares against
  *  block.timestamp). */

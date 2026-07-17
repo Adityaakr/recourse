@@ -50,6 +50,19 @@
 - Bond must be LOCKED while a provider has any live awarded job; `withdraw_bond` must reject otherwise a provider can quote, get awarded, pull the bond, then fail with nothing at stake (critic finding, gtest at M1).
 - Award must be idempotent/single-shot per job even under injected-lane retries (receipts can race).
 
+## CRITICAL LESSON — block_timestamp unit (2026-07-17, live-diagnosed)
+**`Syscall::block_timestamp()` returns UNIX SECONDS on ethexe/hoodi, but MILLISECONDS under gtest.** Proven live: a job's `created_at` on hoodi decoded to `0x6a598f94` = 1,783,948,692 (seconds). gtest advances timestamp by `BLOCK_DURATION_IN_MSECS`=3000/block (ms). The program originally multiplied windows by 1000 (assuming ms), so on-chain a 24s quote window became 24,000 seconds and `award_job` was rejected "quote window still open" forever — while all 23 gtests passed (ms clock hid it). **Fix: the program is now unit-agnostic — NO scaling; `now > created_at + window` compares in block_timestamp's native unit.** Callers pass windows in that unit: SECONDS on-chain (smoke uses 24/48), MS in gtest (30_000). Unit tests pass pre-scaled ms values via open_job (10_000/30_000). This is exactly the kickoff §3 "measure timestamp granularity before locking deadlines" trap.
+
+## LESSON — injected replies mask program errors (2026-07-17)
+An injected `sendAndWaitForReceipt()` returning without a PURGE (`receipt.error==null`) does NOT mean the call succeeded: a program-level `Err`/panic (unwrap_result) comes back as a Promise receipt with `receipt.promise.code.isError==true` and the Err string in `receipt.promise.payload` (16-byte header + SCALE string). ALWAYS check `promise.code.isError` and decode the message; else failures look like successes. (scripts/smoke.ts `injected()`.)
+
+## LESSON — L1 → program-state lag (2026-07-17)
+`mirror.sendMessage(...).sendAndWaitForReceipt()` confirms the L1 tx, NOT that the program processed the message. State reads (`calculateReplyForHandle`) right after an L1 call race ahead and return stale/None. Poll until the expected state appears (scripts/smoke.ts `waitForStatus`). Same for injected→state: the validator receipt precedes anchored-block execution.
+
+## VERIFIED on-chain (2026-07-17, live smoke, OLD buggy program)
+- **L1 SCALE encoding accepted for payable methods**: register_provider + create_job (with String enum args) both executed and updated program state — codec flag #1 resolved, SCALE works for the L1/payable path (not just gtest).
+- **Injected lane works**: submit_quote came back validator-signed (~300ms–6s); reply decoded to a real program message ("provider already quoted this job").
+
 ## Danger zones (open items — verify BEFORE relying on them)
 1. ~~Third-party value send~~ **RESOLVED at M0 (source-verified)**: `::gcore::msg::send(destination, payload, value)` is available and used by sails itself under `#[cfg(feature = "ethexe")]` (sails-rs 2.0.0 `src/client/gstd_env.rs:126`). Push payouts API-possible; pull-payment stays the design (D2 in PLAN.md). Live value-to-EOA behavior still needs the M2 smoke test.
 2. **Block timestamp**: API exists — `Syscall::block_timestamp() -> u64` (sails-rs 2.0.0 `src/gstd/syscalls.rs:64`), plus `with_block_timestamp` test shim. Hoodi wall-clock granularity still to measure at M2.

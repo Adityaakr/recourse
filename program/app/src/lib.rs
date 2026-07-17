@@ -13,8 +13,12 @@
 //        Reply-to-caller value uses CommandReply::with_value
 //        (sails-rs 2.0.0 src/gstd/mod.rs:44). Recipients claim on L1 via
 //        mirror.claimValue.
-//   time: Syscall::block_timestamp() -> u64 ms
-//        (sails-rs 2.0.0 src/gstd/syscalls.rs:64).
+//   time: Syscall::block_timestamp() -> u64, in the runtime's native unit —
+//        UNIX SECONDS on ethexe/hoodi (measured live), MILLISECONDS under
+//        gtest. The program is unit-agnostic: it never scales, comparing
+//        `now` against `created_at + window` directly, so callers pass
+//        windows/deadlines in whatever unit their environment's timestamp
+//        uses (seconds on-chain; ms in gtest). (sails-rs 2.0.0 syscalls.rs:64)
 #![no_std]
 
 extern crate alloc;
@@ -418,7 +422,7 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Market<S> {
         if provider_id == job.spec.requester {
             return Err("requester cannot quote its own job".into());
         }
-        if now > job.created_at + (job.spec.quote_window_secs as u64) * 1000 {
+        if now > job.created_at + job.spec.quote_window_secs as u64 {
             return Err("quote window has closed".into());
         }
         if price_wei > job.spec.max_price_wei {
@@ -458,7 +462,7 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Market<S> {
         let mut state = self.state.get_mut();
         let job = state.job(job_id)?;
         ensure_status(job, &[Status::Open])?;
-        if now <= job.created_at + (job.spec.quote_window_secs as u64) * 1000 {
+        if now <= job.created_at + job.spec.quote_window_secs as u64 {
             return Err("quote window still open".into());
         }
         let policy = job.spec.policy;
@@ -639,7 +643,7 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Settlement<S> {
             return Err("only the winner can submit a receipt".into());
         }
         let deadline_ms = job.awarded_at.expect("awarded job has awarded_at")
-            + (job.spec.deadline_secs as u64) * 1000;
+            + job.spec.deadline_secs as u64;
         if now > deadline_ms {
             return Err("deadline passed; job is expirable".into());
         }
@@ -704,7 +708,7 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Settlement<S> {
         let job = state.job(job_id)?;
         ensure_status(job, &[Status::Awarded, Status::Running])?;
         let deadline_ms = job.awarded_at.expect("awarded job has awarded_at")
-            + (job.spec.deadline_secs as u64) * 1000;
+            + job.spec.deadline_secs as u64;
         if now <= deadline_ms {
             return Err("job is not past its deadline".into());
         }
@@ -958,12 +962,15 @@ mod tests {
         market!(s).register_provider().unwrap();
     }
 
-    /// Open a standard job: max price 1000, escrow 1500, 10s window, 30s
-    /// deadline, cheapest policy. Returns the job id.
+    /// Open a standard job. Windows are expressed in the unit-test clock's
+    /// unit (these tests set `block_timestamp` in ms via the Syscall shim),
+    /// so a 10-"second" window is 10_000 and a 30-"second" deadline is
+    /// 30_000. The program does not scale — see the module time note.
+    /// max price 1000, escrow 1500, cheapest policy. Returns the job id.
     fn open_job(s: &RefCell<AppState>, policy: &str) -> u64 {
         as_actor(REQUESTER, 1_500, 1_000);
         market!(s)
-            .create_job(1_000, 30, "unit-tests-v1".into(), [7u8; 32], policy.into(), 10)
+            .create_job(1_000, 30_000, "unit-tests-v1".into(), [7u8; 32], policy.into(), 10_000)
             .unwrap()
     }
 
