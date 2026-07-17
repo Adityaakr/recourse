@@ -1,0 +1,23 @@
+{
+  "name": "recourse",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Outcome router for AI agents on vara.eth (hoodi)",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@vara-eth/api": "^0.5.2",
+    "dotenv": "^17.4.2",
+    "kzg-wasm": "1.0.0",
+    "sails-js": "^1.0.0",
+    "viem": "npm:@vara-eth/viem@2.47.7-1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
+  },
+  "type": "module"
+}

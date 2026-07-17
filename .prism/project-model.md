@@ -75,6 +75,15 @@
 - Test-macro pattern for service unit tests: `Market::new(&state).expose(0)` via macro_rules (exposure type is unnameable).
 - Client regenerates from app at build (client/build.rs `sails_rs::build_client::<Program>()`); tests use `Actor<RecourseClientProgram, GtestEnv>`.
 
+## M2 deploy facts (2026-07-17, live on hoodi)
+- **Program: `0x6a9d41b38931bd915098b8aad1cf1b395e3630f5`** | code id `0xd2f1b08bf7997450b3998888820c5e8235e8aff595bc341f7ba8789a6d70efe9` | verifier ActorId `0x000…72FeC33Cfce47e4E186d27d1DBc4Fe618e572391`. Recorded in `deployments/hoodi.json`.
+- Deploy path = @vara-eth/api TS SDK (`scripts/deploy.ts`), NOT ethexe CLI (D3 taken; CLI build hung). Sequence: requestCodeValidation (blob upload, WVARA permit base fee) → waitForCodeGotValidated → createProgramBuilder(codeId).withSalt(0x00*32).withExecutableBalance(2000 WVARA, permit).build() → mirror.sendMessage(scaleInitPayload, 0n). deploy.ts is resumable via RECOURSE_RESUME_PROGRAM_ID (guards: codeState==2 skips upload, mirror.nonce()>0 skips init).
+- **WVARA (WTVARA) = 12 decimals, bridge-minted**: NO deposit()/wrap (both revert); faucet is the only source (~1000/request). Code-validation base fee = 1e15 = 1000 WVARA. Executable balance seeded 2000 WVARA. wVARA reverse-gas fuels program execution incl. the init message.
+- **eth address → ActorId**: left-pad 20-byte address to 32 bytes (12 zero bytes prefix), `gprimitives 1.10.0 From<H160> for ActorId` = `actor_id.0[12..].copy_from_slice(h160)`. SDK helper `ethAddressToActorId` (`packages/sdk/src/codec.ts`). REQUIRED for any ActorId arg (verifier config; bot/requester identity checks).
+- **Encoding = hand-written codec** (`packages/sdk/src/codec.ts`, D4): 16-byte v2 header (magic 47 4D, ver 01, hlen 10, interface_id 8 BE, entry_id u16 LE, route_id u8, reserved 00) ++ SCALE(args). Ctor uses interface_id=0/route=0/entry=0. Market interface_id `826b9458701ee226` route 1; Settlement `c0fc606f9a1d8fff` route 2. Byte-verified vs generated Rust client. `encodeCtorPayload`, `encodeCall(service, method, args)`, `decodeReply` (strips header, returns inner SCALE — struct decode is caller's job).
+- **Runtime/RPC gotchas**: root package.json `"type":"module"` (else @vara-eth/api signer subpath → missing .cjs). Program-state reads (`calculateReplyForHandle`, `subscribeBestState`) need a VALIDATOR ws endpoint (`wss://vara-eth-validator-N.gear-tech.io`), NOT the eth RPC (else -32601). `await provider.connect()` before use. `calculateReplyForHandle` source = 20-byte address.
+- **@vara-eth/api 0.5.2 verified surface**: `createVaraEthApi(provider, publicClient, routerAddress, signer?)`; `api.eth.router` (requestCodeValidation, codeState [enum Unknown=0/ValidationRequested=1/Validated=2], createProgramBuilder, programCodeId, requestCodeValidationBaseFee), `api.eth.wvara.prepareAndSignPermitData(spender, value, deadline)`, `getMirrorClient({address, publicClient, signer})` (sendMessage(payload, value?), nonce(), claimValue), `api.call.program.calculateReplyForHandle`. KZG: SDK builds blob+kzg itself; do NOT wire kzg into viem client; optional `initKzgLoading()` warm-up. mirror.sendMessage hardcodes callReply=false.
+
 ## Conventions (adopted)
 - pnpm workspace + cargo workspace side by side; layout per kickoff prompt §4.
 - Every on-chain interaction through `packages/sdk`; no raw calls in components. TS strict, no `any` on exports. pino logs in services.
@@ -91,6 +100,7 @@
 - 2026-07-17 M0 (PLAN.md D1): sails-rs 2.0.0 adopted; counter validation green; drift catalogued.
 - 2026-07-17 M0 (PLAN.md D2): payouts are pull-payments; push-send (`gcore::msg::send` w/ value) verified available as fallback.
 - 2026-07-17 M0 (PLAN.md D3): ethexe CLI from source on macOS; TS-SDK deploy is the M2 fallback.
+- 2026-07-17 M2 (PLAN.md D4): hand-written SCALE codec over the generated client (unreleased sails-js deps); program deployed + init verified live on hoodi.
 - 2026-07-17 M1: program built + 23 tests green. Adversarial skeptic (opus) refuted the bond invariant → **C1 fixed**: bond floor (`bond_wei >= config.bond_wei`) enforced in `submit_quote` (lib.rs) AND the `award_job` candidate filter; a slashed-below-floor provider must top up before quoting. **S1 fixed**: requester cannot quote its own job. Both have regression tests. Skeptic confirmed sound: settle-exactly-once, arithmetic (no under/overflow), value-on-Err, award determinism, boundary conditions (window/deadline strict-inequality, no overlap).
 
 ## Lessons (measured)

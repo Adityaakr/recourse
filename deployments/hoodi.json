@@ -1,0 +1,13 @@
+{
+  "programId": "0x6a9d41b38931bd915098b8aad1cf1b395e3630f5",
+  "codeId": "0xd2f1b08bf7997450b3998888820c5e8235e8aff595bc341f7ba8789a6d70efe9",
+  "router": "0xE549b0AfEdA978271FF7E712232B9F7f39A0b060",
+  "wvara": "0xE1ab85A8B4d5d5B6af0bbD0203EB322DF33d0464",
+  "verifier": "0x72FeC33Cfce47e4E186d27d1DBc4Fe618e572391",
+  "bondWei": "20000000000000000",
+  "slashWei": "10000000000000000",
+  "slashToRequesterBps": 5000,
+  "deployedAt": "2026-07-17T01:57:17.159Z",
+  "deployTx": "0x64ef9f56a9d2f5bccba32ef7a11f29265fe516d9e54af5d2ae3d3296b605c96c",
+  "uploadTx": "0x64ef9f56a9d2f5bccba32ef7a11f29265fe516d9e54af5d2ae3d3296b605c96c"
+}

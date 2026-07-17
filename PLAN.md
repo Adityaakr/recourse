@@ -97,6 +97,48 @@ the CLI — decide at M2 if it comes to that.
 - Deviations: start_job kept (Running is an on-camera beat); job queries live
   on market service, provider/config queries on settlement.
 
+## M2 results (2026-07-17)
+
+- **Program LIVE on hoodi**: `0x6a9d41b38931bd915098b8aad1cf1b395e3630f5`
+  (code id `0xd2f1b0…efe9`, upload tx `0x64ef9f…c96c`). nonce=1, non-zero
+  state hash, registered in router.
+- **Init verified end-to-end**: `scripts/read-config.ts` reads `get_config`
+  back via `calculateReplyForHandle` and the decoded config (verifier ActorId,
+  bond, slash, bps) matches the deployment exactly → the full chain (blob
+  upload → validate → create → SCALE init → program decode) is proven correct.
+- **D3 taken**: ethexe CLI abandoned (source build hung at 0% CPU ~50min on
+  litep2p; dead S3 key; linux-only release binary). Deployed via the
+  @vara-eth/api TS SDK instead (`scripts/deploy.ts`). This is the recorded
+  fallback and aligns with the rest of the TS stack.
+- **SDK foundation** (`packages/sdk/src/`): `network.ts` (hoodi constants +
+  viem chain), `env.ts` (role keys + deployment record), `codec.ts`
+  (hand-written, byte-verified SCALE encoder — see D4).
+- WVARA economics learned: WTVARA is 12-decimal, bridge-minted (no WETH-style
+  wrap; deposit() reverts). Faucet dispenses ~1000 WVARA/request. Deploy cost:
+  1000 (code validation) + 2000 (seeded executable balance). deployer funded
+  to 4000 via faucet.
+
+### D4 (M2): hand-written SCALE codec, not the generated client
+`cargo sails client-js` 2.0.0 emits a client importing `sails-js-parser-idl-v2`
++ `sails-js-types`, which are NOT on npm (latest published sails-js is 1.0.0,
+whose `Sails` class can't parse the v2 IDL — "types is not iterable"). Rather
+than pin an unreleased toolchain, `packages/sdk/src/codec.ts` hand-builds the
+16-byte v2 envelope (magic GM + version + hlen + interface_id BE + entry_id LE
++ route_id) ++ SCALE(args), byte-verified against the correct-by-construction
+generated Rust client for the ctor + 3 handle methods. Reversal cost: adopt the
+generated client if a matching sails-js ships. Deleted the broken generated TS
+client to avoid confusion.
+
+### Deploy gotchas banked (all in code comments / memory)
+- `verifier: ActorId` needs the 20-byte eth address left-padded to 32 bytes
+  (`ethAddressToActorId`); passing the raw address fails "expected 32 bytes".
+- Root `package.json` must be `"type":"module"` or tsx resolves @vara-eth/api's
+  `signer` subpath to a non-existent `.cjs`.
+- Program-state reads (`calculateReplyForHandle`, `subscribeBestState`) go to a
+  **validator** WS endpoint, NOT the Ethereum RPC (`-32601 Method not found`).
+  The provider needs an explicit `await provider.connect()`. `source` is a
+  20-byte address (not the 32-byte ActorId).
+
 ## Open items carried to M1/M2
 
 - Value attached to an Err return under `#[export(payable, unwrap_result)]`: write the
