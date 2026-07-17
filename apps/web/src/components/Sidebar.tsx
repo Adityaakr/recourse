@@ -7,6 +7,7 @@ import { LayoutDashboard, ListChecks, Users, ExternalLink, Droplets, Code2 as Gi
 import { hoodi } from "../lib/chain.js";
 import { shortAddr } from "../lib/format.js";
 import { Mono } from "./ui.js";
+import { VaraLogo } from "./VaraLogo.js";
 import type { Conn } from "../lib/api.js";
 
 export type View = "dashboard" | "jobs" | "providers";
@@ -18,10 +19,10 @@ export function Sidebar({ view, onView, programId, conn, theme, onToggleTheme }:
   return (
     <aside className="flex w-[248px] shrink-0 flex-col border-r bg-sidebar">
       <div className="flex items-center gap-2.5 px-5 py-5">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-primary to-lane-l1 text-white shadow-card">◇</span>
+        <VaraLogo size={38} />
         <div>
           <div className="text-[15px] font-semibold tracking-tight">recourse</div>
-          <div className="text-[11px] text-muted-fg">outcome router · hoodi</div>
+          <div className="text-[11px] text-muted-fg">outcome router · vara.eth</div>
         </div>
       </div>
 
