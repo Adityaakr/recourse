@@ -40,8 +40,8 @@ export function Scene3D() {
     >
       <ambientLight intensity={0.7} />
       {/* injected lane, teal, and L1 lane, violet, from opposite sides */}
-      <pointLight position={[3.2, 2, 2.5]} intensity={55} color="#12c9d6" />
-      <pointLight position={[-3.2, -1.4, 2]} intensity={55} color="#a78bfa" />
+      <pointLight position={[3.2, 2, 2.5]} intensity={55} color="#ffffff" />
+      <pointLight position={[-3.2, -1.4, 2]} intensity={55} color="#b3b3b3" />
       <pointLight position={[0, 3, -2]} intensity={22} color="#ffffff" />
       <directionalLight position={[0, 2, 4]} intensity={0.6} />
       <Prism still={still} />

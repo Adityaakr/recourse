@@ -2,50 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Terminal design system (see /brand.md). Dense, boxy, monospace-forward: a
-   settlement terminal. Deep ink ground, sharp thin borders, amber chrome for
-   panel labels, and the two lane colors (cyan = injected, violet = L1) plus
-   green/red outcomes for the data. Light variant kept for daytime desks. */
+/* Monochrome design system (see /brand.md). Built entirely from four greys:
+   #FFFFFF #D4D4D4 #B3B3B3 #2B2B2B. No hue anywhere - hierarchy comes from
+   value, weight, fill vs outline, and position. Graphite by default, paper on
+   the light toggle. "Lanes" and outcomes are distinguished by shade + treatment
+   (filled vs outlined), never colour. */
 :root, :root[data-theme="dark"] {
-  --bg: 218 32% 5%;
-  --sidebar: 218 30% 6%;
-  --card: 218 27% 7.5%;
-  --card-head: 218 24% 11%;
-  --muted: 218 22% 12%;
-  --border: 218 18% 15%;
-  --grid: 218 16% 12%;
-  --fg: 210 16% 88%;
-  --muted-fg: 216 12% 52%;
-  --accent: 41 90% 56%;
-  --primary: 41 90% 56%;
-  --primary-ink: 38 92% 60%;
-  --lane-injected: 186 76% 52%;
-  --lane-l1: 249 80% 72%;
-  --pass: 146 64% 46%;
-  --fail: 358 78% 62%;
-  --pending: 41 90% 56%;
-  --ring: 41 90% 56%;
+  --bg: 0 0% 11%;
+  --sidebar: 0 0% 13%;
+  --card: 0 0% 16%;
+  --card-head: 0 0% 20%;
+  --muted: 0 0% 22%;
+  --border: 0 0% 27%;
+  --grid: 0 0% 23%;
+  --fg: 0 0% 100%;
+  --muted-fg: 0 0% 62%;
+  --accent: 0 0% 100%;
+  --primary: 0 0% 100%;
+  --primary-ink: 0 0% 100%;
+  --lane-injected: 0 0% 92%;
+  --lane-l1: 0 0% 64%;
+  --pass: 0 0% 98%;
+  --fail: 0 0% 58%;
+  --pending: 0 0% 80%;
+  --ring: 0 0% 100%;
 }
 
 :root[data-theme="light"] {
-  --bg: 210 24% 96%;
+  --bg: 0 0% 97%;
   --sidebar: 0 0% 100%;
   --card: 0 0% 100%;
-  --card-head: 210 20% 97%;
-  --muted: 210 18% 95%;
-  --border: 214 16% 88%;
-  --grid: 214 16% 91%;
-  --fg: 218 30% 14%;
-  --muted-fg: 216 12% 40%;
-  --accent: 28 92% 45%;
-  --primary: 28 90% 46%;
-  --primary-ink: 28 90% 42%;
-  --lane-injected: 190 84% 34%;
-  --lane-l1: 249 58% 54%;
-  --pass: 146 62% 34%;
-  --fail: 358 66% 48%;
-  --pending: 30 88% 44%;
-  --ring: 28 92% 45%;
+  --card-head: 0 0% 98%;
+  --muted: 0 0% 95%;
+  --border: 0 0% 84%;
+  --grid: 0 0% 90%;
+  --fg: 0 0% 12%;
+  --muted-fg: 0 0% 50%;
+  --accent: 0 0% 12%;
+  --primary: 0 0% 12%;
+  --primary-ink: 0 0% 12%;
+  --lane-injected: 0 0% 20%;
+  --lane-l1: 0 0% 52%;
+  --pass: 0 0% 14%;
+  --fail: 0 0% 48%;
+  --pending: 0 0% 40%;
+  --ring: 0 0% 12%;
 }
 
 * { border-color: hsl(var(--border)); }
@@ -63,11 +64,8 @@ body {
 }
 
 .tnum { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
-/* Prose (the little running text there is) uses the sans; data stays mono. */
 .prose-sans { font-family: Inter, system-ui, sans-serif; }
-
-/* Terminal panel label: uppercase, tracked, amber. */
-.term-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: hsl(var(--accent)); }
+.term-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: hsl(var(--muted-fg)); }
 
 @keyframes rise { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 .animate-rise { animation: rise 0.16s ease-out both; }
@@ -79,10 +77,6 @@ body {
 .thin-scroll::-webkit-scrollbar-thumb { background: hsl(var(--border)); }
 .thin-scroll::-webkit-scrollbar-track { background: transparent; }
 
-/* Faint grid texture for the terminal ground. */
-.grid-bg {
-  background-image:
-    linear-gradient(hsl(var(--grid) / 0.5) 1px, transparent 1px),
-    linear-gradient(90deg, hsl(var(--grid) / 0.5) 1px, transparent 1px);
-  background-size: 22px 22px;
-}
+/* Recharts: inherit the theme, kill the default focus outlines. */
+.recharts-surface { overflow: visible; }
+.recharts-wrapper:focus, .recharts-surface:focus { outline: none; }

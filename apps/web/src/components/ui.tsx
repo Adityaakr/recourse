@@ -22,38 +22,33 @@ export function Panel({ label, meta, right, children, className = "", bodyClass 
   );
 }
 
+// Monochrome status: settled-good is a solid inverted chip (prominent),
+// failure/terminal-bad is a strong outline, in-flight is muted. Distinguished
+// by fill vs outline, not colour.
 const STATUS_STYLE: Record<Status, string> = {
-  Open: "text-muted-fg border-border",
-  Awarded: "text-pending border-pending/40",
-  Running: "text-pending border-pending/40",
-  Delivered: "text-lane-injected border-lane-injected/40",
-  Verified: "text-lane-injected border-lane-injected/40",
-  Paid: "text-pass border-pass/40",
-  Refunded: "text-fail border-fail/40",
-  Expired: "text-fail border-fail/40",
+  Open: "border border-border text-muted-fg",
+  Awarded: "border border-fg/30 text-fg",
+  Running: "border border-fg/30 text-fg",
+  Delivered: "border border-fg/40 text-fg",
+  Verified: "border border-fg/40 text-fg",
+  Paid: "bg-fg text-bg border border-fg",
+  Refunded: "border border-fg text-fg",
+  Expired: "border border-fg text-fg",
 };
 
 export function StatusPill({ status }: { status: Status }) {
   return (
-    <span className={`inline-flex items-center border px-1.5 py-px text-[10px] font-bold uppercase tracking-wide ${STATUS_STYLE[status]}`}>
+    <span className={`inline-flex items-center px-1.5 py-px text-[10px] font-bold uppercase tracking-wide ${STATUS_STYLE[status]}`}>
       {status}
     </span>
   );
 }
 
-const LANE_META: Record<Lane, { label: string; cls: string }> = {
-  injected: { label: "INJ", cls: "text-lane-injected border-lane-injected/40" },
-  l1: { label: "L1", cls: "text-lane-l1 border-lane-l1/40" },
-  settlement: { label: "SET", cls: "text-muted-fg border-border" },
-};
-
+// Lanes are shade + treatment: injected is a filled chip, L1 an outlined one.
 export function LaneBadge({ lane }: { lane: Lane }) {
-  const m = LANE_META[lane];
-  return (
-    <span className={`inline-flex items-center gap-1 border px-1 py-px text-[9.5px] font-bold uppercase tracking-wider ${m.cls}`}>
-      <span className="h-1 w-1 bg-current" />{m.label}
-    </span>
-  );
+  if (lane === "injected") return <span className="inline-flex items-center gap-1 bg-fg px-1 py-px text-[9.5px] font-bold uppercase tracking-wider text-bg">inj</span>;
+  if (lane === "l1") return <span className="inline-flex items-center gap-1 border border-fg/60 px-1 py-px text-[9.5px] font-bold uppercase tracking-wider text-fg"><span className="h-1 w-1 rounded-full border border-current" />L1</span>;
+  return <span className="inline-flex items-center gap-1 border border-border px-1 py-px text-[9.5px] font-bold uppercase tracking-wider text-muted-fg">set</span>;
 }
 
 export function Mono({ children, className = "" }: { children: ReactNode; className?: string }) {

@@ -1,141 +1,134 @@
-// Analytics view: terminal charts over live recourse data. Injected-lane
-// latency (the fast-lane story), settlement outcomes per job (pay vs
-// refund+slash), and the quote spread each auction produced. All SVG, no chart
-// lib, styled to the terminal. Everything is real on-chain data; sparse now,
-// it fills as jobs run.
+// Analytics: professional charts over live recourse data, built with Recharts
+// and themed monochrome from the CSS variables. Injected-lane latency, the
+// quote-latency distribution, settlement outcomes, and the winning price per
+// auction. Everything is real on-chain data; sparse now, it fills as jobs run.
 
+import { useEffect, useState } from "react";
+import {
+  ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, Cell,
+} from "recharts";
 import type { Job, TimelineEvent } from "../lib/api.js";
-import { Panel, Mono, Empty } from "./ui.js";
-import { eth, ms } from "../lib/format.js";
+import { Panel, Empty } from "./ui.js";
 
 const ETH = (wei: string) => Number(BigInt(wei)) / 1e18;
 
+/** Read the monochrome palette from CSS vars, re-read on theme change. */
+function useColors() {
+  const read = () => {
+    const s = getComputedStyle(document.documentElement);
+    const v = (n: string) => `hsl(${s.getPropertyValue(n).trim()})`;
+    return { fg: v("--fg"), muted: v("--muted-fg"), grid: v("--grid"), inj: v("--lane-injected"), l1: v("--lane-l1"), fail: v("--fail"), card: v("--card"), border: v("--border") };
+  };
+  const [c, setC] = useState(read);
+  useEffect(() => {
+    const obs = new MutationObserver(() => setC(read()));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+  return c;
+}
+
+const AXIS = (fill: string) => ({ tick: { fill, fontSize: 10, fontFamily: "JetBrains Mono" }, tickLine: false, axisLine: false });
+
+function TT({ active, payload, label, unit }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="border border-border bg-card px-2 py-1 text-[11px] shadow-float">
+      <div className="text-muted-fg">{label}</div>
+      <div className="tnum font-semibold">{payload[0].value}{unit}</div>
+    </div>
+  );
+}
+
 export function Analytics({ jobs, timeline }: { jobs: Job[]; timeline: TimelineEvent[] }) {
+  const c = useColors();
+
   const latency = timeline
     .filter((e) => e.kind === "QuoteSubmitted")
-    .map((e) => e.measuredMs ?? Number((e.detail as { promisedLatencyMs?: number }).promisedLatencyMs ?? 0))
-    .filter((n) => n > 0);
-  const quotes = jobs.flatMap((j) => j.quotes.map((q) => ({ job: j.id, price: ETH(q.priceWei), latency: q.promisedLatencyMs })));
+    .map((e, i) => ({ i: i + 1, ms: e.measuredMs ?? Number((e.detail as { promisedLatencyMs?: number }).promisedLatencyMs ?? 0) }))
+    .filter((d) => d.ms > 0);
+
+  const outcomes = jobs.map((j) => ({
+    job: `#${j.id}`, escrow: +ETH(j.spec.escrowWei).toFixed(4),
+    good: j.status === "Paid", terminal: ["Paid", "Refunded", "Expired"].includes(j.status),
+  }));
+
+  const winPrice = jobs
+    .filter((j) => j.winner)
+    .map((j) => ({ job: `#${j.id}`, price: +ETH(j.quotes.find((q) => q.provider.toLowerCase() === j.winner!.toLowerCase())?.priceWei ?? "0").toFixed(4) }));
 
   return (
-    <div className="flex h-full flex-col gap-2.5">
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 lg:grid-cols-[1.6fr_1fr]">
-        <Panel label="Injected latency" meta="send to validator-signed receipt, ms">
-          {latency.length < 2 ? <Empty>Latency plots as quotes stream in.</Empty> : <AreaChart data={latency} unit="ms" color="var(--lane-injected)" />}
+    <div className="grid h-full grid-rows-2 gap-2.5">
+      <div className="grid min-h-0 grid-cols-1 gap-2.5 lg:grid-cols-[1.7fr_1fr]">
+        <Panel label="Injected latency" meta="send to validator-signed receipt, ms" bodyClass="!p-2">
+          {latency.length < 2 ? <Empty>Latency plots as quotes stream in.</Empty> : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={latency} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="lat" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={c.inj} stopOpacity={0.25} />
+                    <stop offset="100%" stopColor={c.inj} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke={c.grid} vertical={false} />
+                <XAxis dataKey="i" {...AXIS(c.muted)} />
+                <YAxis {...AXIS(c.muted)} width={40} />
+                <Tooltip content={(p) => <TT {...p} unit="ms" />} cursor={{ stroke: c.border }} />
+                <Area type="monotone" dataKey="ms" stroke={c.inj} strokeWidth={1.6} fill="url(#lat)" dot={false} activeDot={{ r: 3, fill: c.fg }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </Panel>
-        <Panel label="Quote latency" meta="per quote">
-          {latency.length === 0 ? <Empty>No quotes yet.</Empty> : <BarSeries data={latency} color="var(--lane-injected)" fmt={(v) => ms(Math.round(v))} />}
+
+        <Panel label="Quote latency" meta="per quote, ms" bodyClass="!p-2">
+          {latency.length === 0 ? <Empty>No quotes yet.</Empty> : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={latency} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                <CartesianGrid stroke={c.grid} vertical={false} />
+                <XAxis dataKey="i" {...AXIS(c.muted)} />
+                <YAxis {...AXIS(c.muted)} width={40} />
+                <Tooltip content={(p) => <TT {...p} unit="ms" />} cursor={{ fill: c.grid }} />
+                <Bar dataKey="ms" fill={c.l1} radius={[1, 1, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </Panel>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 lg:grid-cols-2">
-        <Panel label="Settlement outcomes" meta="escrow, pay vs refund+slash">
-          {jobs.length === 0 ? <Empty>No settled jobs yet.</Empty> : <OutcomeBars jobs={jobs} />}
+      <div className="grid min-h-0 grid-cols-1 gap-2.5 lg:grid-cols-2">
+        <Panel label="Settlement outcomes" meta="escrow per job; filled = paid, hollow = refunded" bodyClass="!p-2">
+          {outcomes.length === 0 ? <Empty>No jobs yet.</Empty> : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={outcomes} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                <CartesianGrid stroke={c.grid} vertical={false} />
+                <XAxis dataKey="job" {...AXIS(c.muted)} />
+                <YAxis {...AXIS(c.muted)} width={44} />
+                <Tooltip content={(p) => <TT {...p} unit=" ETH" />} cursor={{ fill: c.grid }} />
+                <Bar dataKey="escrow" radius={[1, 1, 0, 0]}>
+                  {outcomes.map((o, i) => (
+                    <Cell key={i} fill={o.good ? c.fg : c.card} stroke={o.terminal ? c.fg : c.muted} strokeWidth={o.good ? 0 : 1.4} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </Panel>
-        <Panel label="Quote spread" meta="price per auction, ETH">
-          {quotes.length === 0 ? <Empty>No quotes yet.</Empty> : <SpreadChart jobs={jobs} />}
+
+        <Panel label="Winning price" meta="per auction, ETH" bodyClass="!p-2">
+          {winPrice.length < 2 ? <Empty>Winning prices plot as auctions settle.</Empty> : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={winPrice} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                <CartesianGrid stroke={c.grid} vertical={false} />
+                <XAxis dataKey="job" {...AXIS(c.muted)} />
+                <YAxis {...AXIS(c.muted)} width={44} />
+                <Tooltip content={(p) => <TT {...p} unit=" ETH" />} cursor={{ stroke: c.border }} />
+                <Line type="monotone" dataKey="price" stroke={c.fg} strokeWidth={1.6} dot={{ r: 2.5, fill: c.fg }} activeDot={{ r: 3.5 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </Panel>
       </div>
-    </div>
-  );
-}
-
-// ---- area / line chart --------------------------------------------------
-function AreaChart({ data, unit, color }: { data: number[]; unit: string; color: string }) {
-  const W = 600, H = 200, pad = 8;
-  const max = Math.max(...data) * 1.1, min = 0;
-  const x = (i: number) => pad + (i / (data.length - 1)) * (W - pad * 2);
-  const y = (v: number) => H - pad - ((v - min) / (max - min || 1)) * (H - pad * 2);
-  const line = data.map((v, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const area = `${line} L${x(data.length - 1)},${H - pad} L${x(0)},${H - pad} Z`;
-  const last = data[data.length - 1];
-  return (
-    <div className="flex h-full flex-col">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="min-h-0 w-full flex-1">
-        <defs>
-          <linearGradient id="af" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor={`hsl(${color})`} stopOpacity="0.28" />
-            <stop offset="1" stopColor={`hsl(${color})`} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {[0.25, 0.5, 0.75].map((g) => <line key={g} x1={pad} x2={W - pad} y1={pad + g * (H - pad * 2)} y2={pad + g * (H - pad * 2)} stroke="hsl(var(--grid))" strokeWidth="1" />)}
-        <path d={area} fill="url(#af)" />
-        <path d={line} fill="none" stroke={`hsl(${color})`} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
-        <circle cx={x(data.length - 1)} cy={y(last)} r="3.5" fill={`hsl(${color})`} />
-      </svg>
-      <div className="flex justify-between border-t border-border/60 pt-1.5 text-[10px] text-muted-fg">
-        <span>min <Mono className="text-fg">{Math.round(Math.min(...data))}{unit}</Mono></span>
-        <span>avg <Mono className="text-fg">{Math.round(data.reduce((a, b) => a + b, 0) / data.length)}{unit}</Mono></span>
-        <span>last <span className="tnum" style={{ color: `hsl(${color})` }}>{Math.round(last)}{unit}</span></span>
-      </div>
-    </div>
-  );
-}
-
-// ---- bar series ---------------------------------------------------------
-function BarSeries({ data, color, fmt }: { data: number[]; color: string; fmt: (v: number) => string }) {
-  const max = Math.max(...data) * 1.1;
-  return (
-    <div className="flex h-full flex-col justify-end gap-1.5">
-      <div className="flex min-h-0 flex-1 items-end gap-1.5">
-        {data.map((v, i) => (
-          <div key={i} className="group relative flex-1" style={{ height: `${(v / max) * 100}%` }} title={fmt(v)}>
-            <div className="h-full w-full" style={{ background: `hsl(${color})`, opacity: 0.55 + 0.45 * (v / max) }} />
-          </div>
-        ))}
-      </div>
-      <div className="border-t border-border/60 pt-1.5 text-[10px] text-muted-fg">
-        peak <Mono className="text-fg">{fmt(Math.max(...data))}</Mono> · {data.length} quotes
-      </div>
-    </div>
-  );
-}
-
-// ---- settlement outcomes (up = paid, down = refund) --------------------
-function OutcomeBars({ jobs }: { jobs: Job[] }) {
-  const rows = jobs.map((j) => ({ id: j.id, escrow: ETH(j.spec.escrowWei), paid: j.status === "Paid", terminal: ["Paid", "Refunded", "Expired"].includes(j.status) }));
-  const max = Math.max(...rows.map((r) => r.escrow)) * 1.1 || 1;
-  return (
-    <div className="flex h-full flex-col">
-      <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: `repeat(${rows.length}, 1fr)` }}>
-        {rows.map((r) => (
-          <div key={r.id} className="flex flex-col items-center justify-center gap-1 border-r border-border/40 last:border-r-0 px-2">
-            <div className="flex h-full w-full items-center">
-              <div className="w-full" style={{ height: `${(r.escrow / max) * 70}%`, background: r.terminal ? (r.paid ? "hsl(var(--pass))" : "hsl(var(--fail))") : "hsl(var(--muted-fg))", opacity: r.terminal ? 0.85 : 0.4 }} />
-            </div>
-            <div className="text-[10px]"><Mono className={r.terminal ? (r.paid ? "text-pass" : "text-fail") : "text-muted-fg"}>#{r.id}</Mono></div>
-          </div>
-        ))}
-      </div>
-      <div className="flex justify-between border-t border-border/60 pt-1.5 text-[10px] text-muted-fg">
-        <span className="text-pass">■ paid {rows.filter((r) => r.paid).length}</span>
-        <span className="text-fail">■ refunded {rows.filter((r) => r.terminal && !r.paid).length}</span>
-      </div>
-    </div>
-  );
-}
-
-// ---- quote spread (min..max per job) ------------------------------------
-function SpreadChart({ jobs }: { jobs: Job[] }) {
-  const rows = jobs.filter((j) => j.quotes.length).map((j) => {
-    const ps = j.quotes.map((q) => ETH(q.priceWei));
-    return { id: j.id, min: Math.min(...ps), max: Math.max(...ps), win: j.winner ? ETH(j.quotes.find((q) => q.provider.toLowerCase() === j.winner!.toLowerCase())?.priceWei ?? "0") : null };
-  });
-  if (!rows.length) return <Empty>No quotes yet.</Empty>;
-  const hi = Math.max(...rows.map((r) => r.max)) * 1.1;
-  return (
-    <div className="space-y-2.5">
-      {rows.map((r) => (
-        <div key={r.id} className="flex items-center gap-3">
-          <Mono className="w-8 shrink-0 text-[11px] text-muted-fg">#{r.id}</Mono>
-          <div className="relative h-4 flex-1 bg-muted/40">
-            <div className="absolute top-1/2 h-0.5 -translate-y-1/2 bg-lane-l1/50" style={{ left: `${(r.min / hi) * 100}%`, width: `${((r.max - r.min) / hi) * 100}%` }} />
-            {r.win !== null && <div className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-pass" style={{ left: `${(r.win / hi) * 100}%` }} title="winning price" />}
-          </div>
-          <Mono className="w-16 shrink-0 text-right text-[11px]">{eth(BigInt(Math.round(r.min * 1e18)).toString())}</Mono>
-        </div>
-      ))}
-      <div className="border-t border-border/60 pt-1.5 text-[10px] text-muted-fg"><span className="text-pass">●</span> winning price · <span className="text-lane-l1">▬</span> quote range</div>
     </div>
   );
 }

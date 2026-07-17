@@ -27,13 +27,14 @@ export function ExecutionTrace({ job, timeline }: { job: Job | null; timeline: T
         <ol className="relative space-y-2.5 pl-5">
           <span className="absolute left-[5.5px] top-1.5 bottom-1.5 w-px bg-border" aria-hidden />
           {events.map((e) => {
-            const laneColor = e.lane === "injected" ? "text-lane-injected" : e.lane === "l1" ? "text-lane-l1" : "text-pending";
+            // injected = filled dot, L1 = ring, settlement = small muted dot
+            const node =
+              e.lane === "injected" ? "bg-fg" :
+              e.lane === "l1" ? "border-2 border-fg bg-bg" :
+              "bg-muted-fg";
             return (
             <li key={e.seq} className="animate-rise relative">
-              <span className={`absolute -left-[22px] top-[3px] grid h-3 w-3 place-items-center rounded-full ${laneColor}`} aria-hidden>
-                <span className="h-3 w-3 rounded-full bg-current opacity-20" />
-                <span className="absolute h-1.5 w-1.5 rounded-full bg-current" />
-              </span>
+              <span className={`absolute -left-[22px] top-[3px] h-3 w-3 rounded-full ${node}`} aria-hidden />
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[12px] font-medium">{KIND_LABEL[e.kind] ?? e.kind}</span>
                 <LaneBadge lane={e.lane} />
