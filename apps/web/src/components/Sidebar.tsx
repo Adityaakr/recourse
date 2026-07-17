@@ -1,4 +1,4 @@
-// Left rail — identity, navigation, and the wallet. Kept honest: the nav items
+// Left rail, identity, navigation, and the wallet. Kept honest: the nav items
 // that leave the app are real external links (program on Etherscan, faucet,
 // source); the in-app views switch the main content.
 
@@ -17,7 +17,7 @@ export function Sidebar({ view, onView, programId, conn, theme, onToggleTheme }:
   theme: "light" | "dark"; onToggleTheme: () => void;
 }) {
   return (
-    <aside className="flex w-[248px] shrink-0 flex-col border-r bg-sidebar">
+    <aside className="flex w-[220px] shrink-0 flex-col border-r bg-sidebar">
       <div className="flex items-center gap-2.5 px-5 py-5">
         <VaraLogo size={38} />
         <div>
@@ -94,7 +94,7 @@ function WalletCard() {
   if (!isConnected) {
     return (
       <button type="button" disabled={!injected || isPending} onClick={() => injected && connect({ connector: injected })}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-card transition-opacity hover:opacity-90 disabled:opacity-50">
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-[13px] font-bold uppercase tracking-wide text-black transition-opacity hover:opacity-90 disabled:opacity-50">
         <Wallet size={16} />{isPending ? "Connecting…" : "Connect wallet"}
       </button>
     );
@@ -102,7 +102,7 @@ function WalletCard() {
   if (chainId !== hoodi.id) {
     return (
       <button type="button" onClick={() => switchChain({ chainId: hoodi.id })}
-        className="w-full rounded-xl bg-pending px-4 py-2.5 text-sm font-semibold text-white shadow-card hover:opacity-90">
+        className="w-full rounded-xl bg-pending px-4 py-2.5 text-[13px] font-bold uppercase tracking-wide text-black hover:opacity-90">
         Switch to Hoodi
       </button>
     );

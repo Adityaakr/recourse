@@ -12,98 +12,94 @@ import type { Hex } from "viem";
 
 export function App() {
   const { state, conn } = useIndexer();
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [view, setView] = useState<View>("dashboard");
   const [selected, setSelected] = useState<number | null>(null);
 
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
+  useEffect(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
 
   const jobs = state?.jobs ?? [];
-  useEffect(() => {
-    if (selected === null && jobs.length) setSelected(jobs[jobs.length - 1]!.id);
-  }, [jobs, selected]);
-
+  useEffect(() => { if (selected === null && jobs.length) setSelected(jobs[jobs.length - 1].id); }, [jobs, selected]);
   const job = useMemo(() => jobs.find((j) => j.id === selected) ?? null, [jobs, selected]);
   const programId = (state?.deployment.programId ?? "0x") as Hex;
 
   return (
-    <div className="flex min-h-screen bg-bg text-fg">
-      <Sidebar
-        view={view} onView={setView} programId={programId} conn={conn}
-        theme={theme} onToggleTheme={() => setTheme(theme === "light" ? "dark" : "light")}
-      />
+    <div className="flex h-screen overflow-hidden bg-bg text-fg">
+      <Sidebar view={view} onView={setView} programId={programId} conn={conn}
+        theme={theme} onToggleTheme={() => setTheme(theme === "light" ? "dark" : "light")} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b bg-sidebar px-8 py-5">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight capitalize">{view}</h1>
-            <p className="text-sm text-muted-fg">
-              {view === "dashboard" && "Fund a job and watch the protocol route, grade, and settle it."}
-              {view === "jobs" && "Every job routed through the program, newest first."}
-              {view === "providers" && "Bonded providers and how they've performed."}
-            </p>
+        <header className="flex items-center justify-between border-b bg-sidebar px-4 py-2.5">
+          <div className="flex items-baseline gap-2.5">
+            <h1 className="term-label text-[12px]" style={{ letterSpacing: "0.08em" }}>{view}</h1>
+            <span className="text-[11px] text-muted-fg">
+              {view === "dashboard" && "fund a job; watch the protocol route, grade, and settle it"}
+              {view === "jobs" && "every job routed through the program, newest first"}
+              {view === "providers" && "bonded providers and how they have performed"}
+            </span>
           </div>
-          <div className="hidden items-center gap-2 rounded-full border bg-card px-3.5 py-1.5 text-xs sm:flex">
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-lane-injected" /> injected</span>
+          <div className="flex items-center gap-2 border border-border px-2 py-1 text-[10px] uppercase tracking-wide">
+            <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 bg-lane-injected" /> inj</span>
             <span className="h-3 w-px bg-border" />
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-lane-l1" /> L1</span>
+            <span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 bg-lane-l1" /> L1</span>
           </div>
         </header>
 
-        <main className="thin-scroll flex-1 overflow-y-auto p-8">
+        <div className="min-h-0 flex-1 overflow-hidden p-2.5">
           {!state ? (
-            <div className="space-y-4"><Skeleton className="h-56" /><div className="grid gap-4 sm:grid-cols-4">{[0,1,2,3].map(i=><Skeleton key={i} className="h-20" />)}</div></div>
+            <div className="grid h-full grid-rows-[auto_1fr] gap-2.5">
+              <Skeleton className="h-[72px]" />
+              <div className="grid grid-cols-[300px_1fr_320px] gap-2.5"><Skeleton /><Skeleton /><Skeleton /></div>
+            </div>
           ) : view === "dashboard" ? (
-            <div className="space-y-6">
+            <div className="flex h-full flex-col gap-2.5">
               <Hero jobs={jobs} timeline={state.timeline} />
-              <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
-                <div className="flex flex-col gap-5">
+              <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 lg:grid-cols-[300px_1fr_320px]">
+                <div className="flex min-h-0 flex-col gap-2.5">
                   <JobComposer programId={programId} onFunded={() => {}} />
-                  <JobList jobs={jobs} selected={selected} onSelect={setSelected} compact />
+                  <JobList jobs={jobs} selected={selected} onSelect={setSelected} className="min-h-0 flex-1" />
                 </div>
-                <div className="grid min-h-0 gap-5 xl:grid-cols-2">
-                  <div className="xl:row-span-2"><ProviderMarket job={job} timeline={state.timeline} /></div>
+                <ProviderMarket job={job} timeline={state.timeline} />
+                <div className="flex min-h-0 flex-col gap-2.5">
                   <ExecutionTrace job={job} timeline={state.timeline} />
                   <SettlementReceipt job={job} config={state.config} />
                 </div>
               </div>
             </div>
           ) : view === "jobs" ? (
-            <JobsTable jobs={jobs} onSelect={(id) => { setSelected(id); setView("dashboard"); }} />
+            <div className="h-full"><JobsTable jobs={jobs} onSelect={(id) => { setSelected(id); setView("dashboard"); }} /></div>
           ) : (
-            <ProvidersTable jobs={jobs} />
+            <div className="h-full"><ProvidersTable jobs={jobs} /></div>
           )}
-        </main>
+        </div>
 
-        <footer className="border-t bg-sidebar px-8 py-3 text-xs text-muted-fg">
-          {state && (
-            <span>Program <a className="text-lane-l1 hover:underline" href={`https://hoodi.etherscan.io/address/${programId}`} target="_blank" rel="noreferrer"><Mono>{programId.slice(0, 10)}…</Mono></a> on hoodi · live on-chain data, nothing simulated</span>
-          )}
+        <footer className="flex items-center gap-3 border-t bg-sidebar px-4 py-1.5 text-[10.5px] text-muted-fg">
+          <span className={`flex items-center gap-1.5 ${conn === "live" ? "text-pass" : conn === "error" ? "text-fail" : "text-pending"}`}>
+            <span className="h-1.5 w-1.5 bg-current" />{conn === "live" ? "LIVE" : conn === "error" ? "OFFLINE" : "SYNC"}
+          </span>
+          {state && <span>PROGRAM <a className="text-lane-injected hover:underline" href={`https://hoodi.etherscan.io/address/${programId}`} target="_blank" rel="noreferrer"><Mono>{programId.slice(0, 12)}…</Mono></a></span>}
+          <span className="ml-auto">hoodi 560048 · live on-chain data, nothing simulated</span>
         </footer>
       </div>
     </div>
   );
 }
 
-function JobList({ jobs, selected, onSelect, compact }: { jobs: Job[]; selected: number | null; onSelect: (id: number) => void; compact?: boolean }) {
+function JobList({ jobs, selected, onSelect, className = "" }: { jobs: Job[]; selected: number | null; onSelect: (id: number) => void; className?: string }) {
   return (
-    <Panel title="Jobs" hint={`${jobs.length} routed`} className={compact ? "max-h-[360px]" : ""}>
+    <Panel label="Jobs" meta={`${jobs.length} routed`} className={className}>
       {jobs.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-fg">No jobs yet. Fund one to begin.</p>
+        <p className="py-6 text-center text-[11px] text-muted-fg">No jobs yet. Fund one to begin.</p>
       ) : (
-        <ul className="space-y-1.5">
+        <div className="border border-border">
           {[...jobs].reverse().map((j) => (
-            <li key={j.id}>
-              <button type="button" onClick={() => onSelect(j.id)} aria-pressed={selected === j.id}
-                className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left transition-colors ${selected === j.id ? "border-primary bg-primary/5" : "hover:bg-muted"}`}>
-                <span className="flex items-center gap-2"><Mono className="text-sm font-medium">#{j.id}</Mono><span className="text-xs text-muted-fg">{j.spec.policy}</span></span>
-                <StatusPill status={j.status} />
-              </button>
-            </li>
+            <button key={j.id} type="button" onClick={() => onSelect(j.id)} aria-pressed={selected === j.id}
+              className={`flex w-full items-center justify-between border-b border-border/60 px-2.5 py-2 text-left transition-colors last:border-0 ${selected === j.id ? "bg-accent/10" : "hover:bg-muted"}`}>
+              <span className="flex items-center gap-2.5"><Mono className={`text-[12px] font-semibold ${selected === j.id ? "text-accent" : ""}`}>#{j.id}</Mono><span className="text-[11px] uppercase tracking-wide text-muted-fg">{j.spec.policy}</span></span>
+              <StatusPill status={j.status} />
+            </button>
           ))}
-        </ul>
+        </div>
       )}
     </Panel>
   );
@@ -111,25 +107,23 @@ function JobList({ jobs, selected, onSelect, compact }: { jobs: Job[]; selected:
 
 function JobsTable({ jobs, onSelect }: { jobs: Job[]; onSelect: (id: number) => void }) {
   return (
-    <Panel title="All jobs" hint={`${jobs.length} routed on hoodi`}>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead><tr className="border-b text-left text-xs text-muted-fg">
-            <Th>Job</Th><Th>Policy</Th><Th>Escrow</Th><Th>Winner</Th><Th>Status</Th>
-          </tr></thead>
-          <tbody>
-            {[...jobs].reverse().map((j) => (
-              <tr key={j.id} onClick={() => onSelect(j.id)} className="cursor-pointer border-b last:border-0 hover:bg-muted">
-                <td className="py-2.5"><Mono className="font-medium">#{j.id}</Mono></td>
-                <td className="capitalize">{j.spec.policy}</td>
-                <td><Mono>{eth(j.spec.escrowWei)} ETH</Mono></td>
-                <td>{j.winner ? <AddrLink addr={j.winner} /> : <span className="text-muted-fg">—</span>}</td>
-                <td><StatusPill status={j.status} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <Panel label="All jobs" meta={`${jobs.length} routed on hoodi`} className="h-full">
+      <table className="w-full text-[12px]">
+        <thead><tr className="border-b text-left text-[10px] uppercase tracking-wide text-muted-fg">
+          <Th>Job</Th><Th>Policy</Th><Th>Escrow</Th><Th>Winner</Th><Th>Status</Th>
+        </tr></thead>
+        <tbody>
+          {[...jobs].reverse().map((j) => (
+            <tr key={j.id} onClick={() => onSelect(j.id)} className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-muted">
+              <td className="py-2"><Mono className="font-semibold">#{j.id}</Mono></td>
+              <td className="uppercase tracking-wide text-muted-fg">{j.spec.policy}</td>
+              <td><Mono>{eth(j.spec.escrowWei)} ETH</Mono></td>
+              <td>{j.winner ? <AddrLink addr={j.winner} /> : <span className="text-muted-fg">--</span>}</td>
+              <td><StatusPill status={j.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </Panel>
   );
 }
@@ -137,43 +131,32 @@ function JobsTable({ jobs, onSelect }: { jobs: Job[]; onSelect: (id: number) => 
 function ProvidersTable({ jobs }: { jobs: Job[] }) {
   const stats = new Map<string, { won: number; paid: number; failed: number }>();
   for (const j of jobs) {
-    for (const q of j.quotes) {
-      const k = q.provider.toLowerCase();
-      if (!stats.has(k)) stats.set(k, { won: 0, paid: 0, failed: 0 });
-    }
+    for (const q of j.quotes) { const k = q.provider.toLowerCase(); if (!stats.has(k)) stats.set(k, { won: 0, paid: 0, failed: 0 }); }
     if (j.winner) {
       const k = j.winner.toLowerCase();
       const s = stats.get(k) ?? { won: 0, paid: 0, failed: 0 };
-      s.won++;
-      if (j.status === "Paid") s.paid++;
-      if (j.status === "Refunded" || j.status === "Expired") s.failed++;
+      s.won++; if (j.status === "Paid") s.paid++; if (j.status === "Refunded" || j.status === "Expired") s.failed++;
       stats.set(k, s);
     }
   }
   const rows = [...stats.entries()];
   return (
-    <Panel title="Providers" hint={`${rows.length} seen in the market`}>
-      {rows.length === 0 ? <p className="py-8 text-center text-sm text-muted-fg">No providers have quoted yet.</p> : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="border-b text-left text-xs text-muted-fg"><Th>Provider</Th><Th>Won</Th><Th>Passed</Th><Th>Failed</Th></tr></thead>
-            <tbody>
-              {rows.map(([addr, s]) => (
-                <tr key={addr} className="border-b last:border-0">
-                  <td className="py-2.5"><AddrLink addr={addr} /></td>
-                  <td><Mono>{s.won}</Mono></td>
-                  <td><Mono className="text-pass">{s.paid}</Mono></td>
-                  <td><Mono className="text-fail">{s.failed}</Mono></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+    <Panel label="Providers" meta={`${rows.length} seen`} className="h-full">
+      {rows.length === 0 ? <p className="py-6 text-center text-[11px] text-muted-fg">No providers have quoted yet.</p> : (
+        <table className="w-full text-[12px]">
+          <thead><tr className="border-b text-left text-[10px] uppercase tracking-wide text-muted-fg"><Th>Provider</Th><Th>Won</Th><Th>Passed</Th><Th>Failed</Th></tr></thead>
+          <tbody>
+            {rows.map(([addr, s]) => (
+              <tr key={addr} className="border-b border-border/60 last:border-0">
+                <td className="py-2"><AddrLink addr={addr} /></td>
+                <td><Mono>{s.won}</Mono></td><td><Mono className="text-pass">{s.paid}</Mono></td><td><Mono className="text-fail">{s.failed}</Mono></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </Panel>
   );
 }
 
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="pb-2 pr-4 font-medium">{children}</th>;
-}
+function Th({ children }: { children: React.ReactNode }) { return <th className="pb-2 pr-4 font-semibold">{children}</th>; }

@@ -1,4 +1,4 @@
-// The signature 3D visual: a slowly turning glass prism — the router — lit from
+// The signature 3D visual: a slowly turning glass prism, the router, lit from
 // two sides by the lane colors (teal = injected, violet = L1). The object IS
 // the product idea: one node, two lanes refracting through it. Kept restrained
 // and calm so it reads as craft, not decoration.
@@ -39,7 +39,7 @@ export function Scene3D() {
       style={{ width: "100%", height: "100%" }}
     >
       <ambientLight intensity={0.7} />
-      {/* injected lane — teal — and L1 lane — violet — from opposite sides */}
+      {/* injected lane, teal, and L1 lane, violet, from opposite sides */}
       <pointLight position={[3.2, 2, 2.5]} intensity={55} color="#12c9d6" />
       <pointLight position={[-3.2, -1.4, 2]} intensity={55} color="#a78bfa" />
       <pointLight position={[0, 3, -2]} intensity={22} color="#ffffff" />

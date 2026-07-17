@@ -2,74 +2,87 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Light-first design system — see /brand.md. A clean, calm settlement console:
-   soft cool-white canvas, white cards, one indigo accent, and the two-lane
-   colors (teal = injected, violet = L1) used only where they mean the lane. */
-:root {
-  --bg: 220 24% 97%;
-  --sidebar: 0 0% 100%;
-  --card: 0 0% 100%;
-  --muted: 220 20% 96%;
-  --border: 220 16% 91%;
-  --fg: 222 28% 13%;
-  --muted-fg: 220 9% 46%;
-  --primary: 245 68% 61%;
-  --primary-ink: 245 60% 52%;
-  --lane-injected: 187 78% 40%;
-  --lane-l1: 255 72% 65%;
-  --pass: 150 66% 37%;
-  --fail: 358 68% 55%;
-  --pending: 32 90% 46%;
-  --ring: 245 68% 61%;
-  --shadow-sm: 0 1px 2px hsl(222 25% 20% / 0.05), 0 1px 3px hsl(222 25% 20% / 0.04);
-  --shadow: 0 2px 8px hsl(222 25% 20% / 0.06), 0 8px 24px hsl(222 25% 20% / 0.05);
+/* Terminal design system (see /brand.md). Dense, boxy, monospace-forward: a
+   settlement terminal. Deep ink ground, sharp thin borders, amber chrome for
+   panel labels, and the two lane colors (cyan = injected, violet = L1) plus
+   green/red outcomes for the data. Light variant kept for daytime desks. */
+:root, :root[data-theme="dark"] {
+  --bg: 218 32% 5%;
+  --sidebar: 218 30% 6%;
+  --card: 218 27% 7.5%;
+  --card-head: 218 24% 11%;
+  --muted: 218 22% 12%;
+  --border: 218 18% 15%;
+  --grid: 218 16% 12%;
+  --fg: 210 16% 88%;
+  --muted-fg: 216 12% 52%;
+  --accent: 38 92% 55%;
+  --primary: 38 92% 55%;
+  --primary-ink: 38 92% 60%;
+  --lane-injected: 187 82% 52%;
+  --lane-l1: 262 84% 74%;
+  --pass: 146 64% 46%;
+  --fail: 358 78% 62%;
+  --pending: 38 92% 55%;
+  --ring: 38 92% 55%;
 }
 
-:root[data-theme="dark"] {
-  --bg: 224 32% 6%;
-  --sidebar: 224 28% 8%;
-  --card: 224 26% 9%;
-  --muted: 224 20% 14%;
-  --border: 224 16% 18%;
-  --fg: 210 20% 95%;
-  --muted-fg: 218 12% 60%;
-  --primary: 245 75% 68%;
-  --primary-ink: 245 75% 70%;
-  --lane-injected: 187 82% 52%;
-  --lane-l1: 255 80% 74%;
-  --pass: 150 62% 48%;
-  --fail: 358 78% 66%;
-  --pending: 38 92% 56%;
-  --ring: 245 75% 68%;
-  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.3);
-  --shadow: 0 2px 8px hsl(0 0% 0% / 0.35), 0 8px 24px hsl(0 0% 0% / 0.3);
+:root[data-theme="light"] {
+  --bg: 210 24% 96%;
+  --sidebar: 0 0% 100%;
+  --card: 0 0% 100%;
+  --card-head: 210 20% 97%;
+  --muted: 210 18% 95%;
+  --border: 214 16% 88%;
+  --grid: 214 16% 91%;
+  --fg: 218 30% 14%;
+  --muted-fg: 216 12% 40%;
+  --accent: 28 92% 45%;
+  --primary: 28 90% 46%;
+  --primary-ink: 28 90% 42%;
+  --lane-injected: 190 84% 34%;
+  --lane-l1: 262 60% 52%;
+  --pass: 146 62% 34%;
+  --fail: 358 66% 48%;
+  --pending: 30 88% 44%;
+  --ring: 28 92% 45%;
 }
 
 * { border-color: hsl(var(--border)); }
-html { color-scheme: light; }
-:root[data-theme="dark"] { color-scheme: dark; }
+html { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
 
 body {
   margin: 0;
   background: hsl(var(--bg));
   color: hsl(var(--fg));
-  font-family: Inter, system-ui, sans-serif;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-feature-settings: "tnum";
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "cv11", "ss01";
+  font-size: 13px;
 }
 
-.tnum { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.tnum { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+/* Prose (the little running text there is) uses the sans; data stays mono. */
+.prose-sans { font-family: Inter, system-ui, sans-serif; }
 
-/* Soft, layered card depth — no heavy borders. */
-.shadow-card { box-shadow: var(--shadow-sm); }
-.shadow-float { box-shadow: var(--shadow); }
+/* Terminal panel label: uppercase, tracked, amber. */
+.term-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: hsl(var(--accent)); }
 
-@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-.animate-rise { animation: rise 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+.animate-rise { animation: rise 0.16s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .animate-rise { animation: none; } }
 
-:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+:focus-visible { outline: 1px solid hsl(var(--ring)); outline-offset: 1px; }
 
-.thin-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
-.thin-scroll::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 8px; }
+.thin-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: hsl(var(--border)); }
 .thin-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* Faint grid texture for the terminal ground. */
+.grid-bg {
+  background-image:
+    linear-gradient(hsl(var(--grid) / 0.5) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--grid) / 0.5) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
