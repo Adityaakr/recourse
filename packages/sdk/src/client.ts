@@ -155,6 +155,11 @@ export async function createRecourse(opts: RecourseOpts): Promise<Recourse> {
     const gap = o.gap ?? 6000;
     for (let attempt = 1; attempt <= tries; attempt++) {
       const tx = await api.createInjectedTransaction({ destination: programId, payload });
+      // Do the one-time setup (reference block, slot validator, signature)
+      // BEFORE timing, and route to the slot validator for lowest latency, so
+      // the measured number is the pure send-to-validator-signed-receipt trip.
+      await tx.setReferenceBlock();
+      try { await tx.setSlotValidator(); } catch { /* fall back to default */ }
       await tx.sign(account(role).signer);
       const t0 = Date.now();
       const receipt = await tx.sendAndWaitForReceipt();

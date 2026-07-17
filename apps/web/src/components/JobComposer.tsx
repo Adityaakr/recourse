@@ -59,6 +59,11 @@ export function JobComposer({ programId, onFunded }: { programId: Hex; onFunded:
           {!isConnected ? "Connect wallet to fund" : isPending ? "Confirm in wallet…" : `Fund job · ${terms.escrowEth} ETH`}
         </button>
 
+        <p className="text-[10.5px] leading-relaxed text-muted-fg">
+          Funding is your one on-chain payment: it carries the escrow, so it rides <span className="text-fg">L1</span> with gas (~12s).
+          Everything after (quotes, award, delivery, grading) runs <span className="text-fg">gasless</span> on the injected lane, signed by the operators, not you.
+        </p>
+
         {error && <p className="border border-fail/40 bg-fail/10 px-2.5 py-1.5 text-[11px] text-fail">{(error as { shortMessage?: string }).shortMessage ?? "Transaction failed"}</p>}
         {tx && (
           <p className="text-[11px] text-muted-fg">

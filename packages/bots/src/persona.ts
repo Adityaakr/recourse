@@ -68,19 +68,19 @@ export function makePersona(name: PersonaName): Persona {
     case "steady":
       return {
         name, role: "bot-steady",
-        priceFraction: 0.7, promisedLatencyMs: 400,
+        priceFraction: 0.7, promisedLatencyMs: 180,
         solve: realSolve,
       };
     case "premium":
       return {
         name, role: "bot-premium",
-        priceFraction: 0.95, promisedLatencyMs: 800,
+        priceFraction: 0.95, promisedLatencyMs: 240,
         solve: realSolve,
       };
     case "cheapskate":
       return {
         name, role: "bot-cheapskate",
-        priceFraction: 0.3, promisedLatencyMs: 100,
+        priceFraction: 0.3, promisedLatencyMs: 90,
         solve: async (task) =>
           FAIL_MODE === "none" ? realSolve(task) : brokenSolve(task, FAIL_MODE),
       };
