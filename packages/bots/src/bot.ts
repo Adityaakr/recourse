@@ -78,7 +78,18 @@ async function main() {
         }
       }
     } catch (e) {
-      log.error({ err: String(e) }, "loop error");
+      const msg = String(e);
+      // The SDK reconnects to a fresh synced validator in the background and
+      // closes the old connection; an in-flight read here surfaces that once as
+      // a closed-connection error. It is expected and self-heals on the next
+      // iteration, so log it quietly and retry immediately (no lost poll cycle)
+      // rather than risk missing a quote window.
+      if (msg.includes("manually closed") || msg.includes("Connection")) {
+        log.debug({ err: msg }, "connection cycled (reconnect); retrying");
+        await new Promise((res) => setTimeout(res, 300));
+        continue;
+      }
+      log.error({ err: msg }, "loop error");
     }
     await new Promise((res) => setTimeout(res, POLL_MS));
   }

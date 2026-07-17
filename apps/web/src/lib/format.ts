@@ -21,5 +21,8 @@ export function ms(n?: number | null): string {
   return n < 1000 ? `${n}ms` : `${(n / 1000).toFixed(1)}s`;
 }
 
-export const HOODI_TX = (h: string) => `https://hoodi.etherscan.io/tx/${h}`;
-export const HOODI_ADDR = (a: string) => `https://hoodi.etherscan.io/address/${a}`;
+// Explorer links point at the Vara.eth Idea explorer, where the program is
+// deployed and its messages/events stream in real time. A program's page is
+// the live view of everything happening on it, so all links resolve there.
+export const IDEA_EXPLORER = "https://idea-eth.vara.network";
+export const IDEA_PROGRAM = (programId: string) => `${IDEA_EXPLORER}/programs/${programId}`;

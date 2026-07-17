@@ -1,9 +1,9 @@
 // Terminal UI primitives. Boxy windowed panels with an amber label bar, sharp
 // thin borders, monospaced data, the two lanes color-coded.
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Status, Lane } from "../lib/api.js";
-import { HOODI_ADDR, shortAddr } from "../lib/format.js";
+import { shortAddr } from "../lib/format.js";
 
 export function Panel({ label, meta, right, children, className = "", bodyClass = "" }: {
   label: string; meta?: string; right?: ReactNode; children: ReactNode; className?: string; bodyClass?: string;
@@ -55,13 +55,18 @@ export function Mono({ children, className = "" }: { children: ReactNode; classN
   return <span className={`tnum ${className}`}>{children}</span>;
 }
 
+/** An account address. Idea is program-centric (no per-account page), so rather
+ *  than send every address to the same program URL, this copies the full
+ *  address on click — a precise, useful action instead of a misleading link. */
 export function AddrLink({ addr }: { addr: string }) {
   const clean = addr.replace(/^0x0{24}/, "0x");
+  const [copied, setCopied] = useState(false);
   return (
-    <a href={HOODI_ADDR(clean)} target="_blank" rel="noreferrer"
+    <button type="button" title={`${clean} · click to copy`}
+      onClick={() => { navigator.clipboard?.writeText(clean).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); }); }}
       className="tnum text-lane-injected underline-offset-2 hover:underline">
-      {shortAddr(addr)}
-    </a>
+      {copied ? "copied ✓" : shortAddr(addr)}
+    </button>
   );
 }
 

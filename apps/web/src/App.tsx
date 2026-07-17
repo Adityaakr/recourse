@@ -7,10 +7,11 @@ import { ProviderMarket } from "./components/ProviderMarket.js";
 import { ExecutionTrace } from "./components/ExecutionTrace.js";
 import { SettlementReceipt } from "./components/SettlementReceipt.js";
 import { Analytics } from "./components/Analytics.js";
+import { JobLifecycle } from "./components/JobLifecycle.js";
 import { Dialog } from "./components/Dialog.js";
 import { JobDetail } from "./components/JobDetail.js";
 import { StatusPill, Mono, Skeleton, Panel, AddrLink } from "./components/ui.js";
-import { eth } from "./lib/format.js";
+import { eth, IDEA_PROGRAM } from "./lib/format.js";
 import { Maximize2 } from "lucide-react";
 import type { Hex } from "viem";
 
@@ -45,6 +46,7 @@ export function App() {
             <h1 className="term-label text-[12px]" style={{ letterSpacing: "0.08em" }}>{view}</h1>
             <span className="text-[11px] text-muted-fg">
               {view === "dashboard" && "fund a job; watch the protocol route, grade, and settle it"}
+              {view === "live" && "a job's whole life in real time: quotes, routing, the model call, grading, and who gets paid"}
               {view === "jobs" && "every job routed through the program, newest first"}
               {view === "providers" && "bonded providers and how they have performed"}
               {view === "analytics" && "live charts over routed jobs, latency, and settlement"}
@@ -68,8 +70,8 @@ export function App() {
               <Hero jobs={jobs} timeline={state.timeline} />
               <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 lg:grid-cols-[300px_1fr_320px]">
                 <div className="flex min-h-0 flex-col gap-2.5">
-                  <JobComposer programId={programId} onFunded={() => setFollowLatest(true)} />
-                  <JobList jobs={jobs} selected={selected} following={followLatest} onSelect={pickJob} onDetail={setDetail} className="min-h-0 flex-1" />
+                  <JobComposer programId={programId} onFunded={() => setFollowLatest(true)} className="min-h-0 flex-[3]" />
+                  <JobList jobs={jobs} selected={selected} following={followLatest} onSelect={pickJob} onDetail={setDetail} className="min-h-0 flex-[2]" />
                 </div>
                 <ProviderMarket job={job} timeline={state.timeline} />
                 <div className="flex min-h-0 flex-col gap-2.5">
@@ -77,6 +79,11 @@ export function App() {
                   <SettlementReceipt job={job} config={state.config} />
                 </div>
               </div>
+            </div>
+          ) : view === "live" ? (
+            <div className="grid h-full grid-cols-1 gap-2.5 lg:grid-cols-[300px_1fr]">
+              <JobList jobs={jobs} selected={selected} following={followLatest} onSelect={pickJob} onDetail={setDetail} className="min-h-0" />
+              <JobLifecycle job={job} config={state.config} timeline={state.timeline} programId={programId} />
             </div>
           ) : view === "analytics" ? (
             <Analytics jobs={jobs} timeline={state.timeline} />
@@ -91,7 +98,7 @@ export function App() {
           <span className={`flex items-center gap-1.5 ${conn === "live" ? "text-pass" : conn === "error" ? "text-fail" : "text-pending"}`}>
             <span className="h-1.5 w-1.5 bg-current" />{conn === "live" ? "LIVE" : conn === "error" ? "OFFLINE" : "SYNC"}
           </span>
-          {state && <span>PROGRAM <a className="text-lane-injected hover:underline" href={`https://hoodi.etherscan.io/address/${programId}`} target="_blank" rel="noreferrer"><Mono>{programId.slice(0, 12)}…</Mono></a></span>}
+          {state && <span>PROGRAM <a className="text-lane-injected hover:underline" href={IDEA_PROGRAM(programId)} target="_blank" rel="noreferrer"><Mono>{programId.slice(0, 12)}…</Mono></a></span>}
           <span className="ml-auto">hoodi 560048 · live on-chain data, nothing simulated</span>
         </footer>
       </div>

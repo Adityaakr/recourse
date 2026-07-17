@@ -158,13 +158,18 @@ pub mod market {
             &mut self,
             job_id: u64,
         ) -> sails_rs::client::PendingCall<io::AwardJob, Self::Env>;
-        /// Fund a job. Escrow must cover the worst case (value >= max price);
-        /// at settlement the winner gets the quoted price and the difference
-        /// returns to the requester.
-        /// Payable requires the ethabi transport (macro-enforced), so params
-        /// are SolValue-friendly: enums ride as strings, hashes as [u8; 32].
+        fn balance_of(
+            &self,
+            who: ActorId,
+        ) -> sails_rs::client::PendingCall<io::BalanceOf, Self::Env>;
+        /// Fund a job by debiting your internal balance. Injected-lane method: it
+        /// carries no value (escrow is spent from the balance loaded via
+        /// `deposit`), so funding is a gasless signature. Escrow must cover the
+        /// worst case (escrow >= max price); at settlement the winner is credited
+        /// the quoted price and the difference returns to the requester's balance.
         fn create_job(
             &mut self,
+            escrow_wei: u128,
             max_price_wei: u128,
             deadline_secs: u32,
             verifier_kind: String,
@@ -172,6 +177,12 @@ pub mod market {
             policy: String,
             quote_window_secs: u32,
         ) -> sails_rs::client::PendingCall<io::CreateJob, Self::Env>;
+        /// Load your internal balance. This is the ONE gas payment a requester
+        /// makes (payable -> L1): value can only enter the program on the classic
+        /// lane, because an injected transaction that carries value is purged
+        /// before execution (`NonZeroValue`). Once loaded, funding jobs spends
+        /// this balance gaslessly on the injected lane. (vault pattern)
+        fn deposit(&mut self) -> sails_rs::client::PendingCall<io::Deposit, Self::Env>;
         fn get_job(&self, job_id: u64) -> sails_rs::client::PendingCall<io::GetJob, Self::Env>;
         fn list_jobs(
             &self,
@@ -197,6 +208,12 @@ pub mod market {
             promised_latency_ms: u32,
         ) -> sails_rs::client::PendingCall<io::SubmitQuote, Self::Env>;
         fn top_up_bond(&mut self) -> sails_rs::client::PendingCall<io::TopUpBond, Self::Env>;
+        /// Cash an internal balance back out to L1 (the "claim" gas boundary).
+        /// Value rides the reply; the caller claims it via mirror.claimValue.
+        fn withdraw(
+            &mut self,
+            amount: u128,
+        ) -> sails_rs::client::PendingCall<io::Withdraw, Self::Env>;
         /// Withdraw the full bond and deregister. Only with no active job.
         /// Value rides the reply to the caller (vault pattern).
         fn withdraw_bond(&mut self) -> sails_rs::client::PendingCall<io::WithdrawBond, Self::Env>;
@@ -206,7 +223,7 @@ pub mod market {
 
     impl sails_rs::client::Identifiable for MarketImpl {
         const INTERFACE_ID: sails_rs::InterfaceId =
-            sails_rs::InterfaceId::from_bytes_8([130, 107, 148, 88, 112, 30, 226, 38]);
+            sails_rs::InterfaceId::from_bytes_8([18, 194, 57, 212, 69, 113, 133, 12]);
     }
 
     impl<E: sails_rs::client::GearEnv> Market for sails_rs::client::Service<MarketImpl, E> {
@@ -217,8 +234,15 @@ pub mod market {
         ) -> sails_rs::client::PendingCall<io::AwardJob, Self::Env> {
             self.pending_call((job_id,))
         }
+        fn balance_of(
+            &self,
+            who: ActorId,
+        ) -> sails_rs::client::PendingCall<io::BalanceOf, Self::Env> {
+            self.pending_call((who,))
+        }
         fn create_job(
             &mut self,
+            escrow_wei: u128,
             max_price_wei: u128,
             deadline_secs: u32,
             verifier_kind: String,
@@ -227,6 +251,7 @@ pub mod market {
             quote_window_secs: u32,
         ) -> sails_rs::client::PendingCall<io::CreateJob, Self::Env> {
             self.pending_call((
+                escrow_wei,
                 max_price_wei,
                 deadline_secs,
                 verifier_kind,
@@ -234,6 +259,9 @@ pub mod market {
                 policy,
                 quote_window_secs,
             ))
+        }
+        fn deposit(&mut self) -> sails_rs::client::PendingCall<io::Deposit, Self::Env> {
+            self.pending_call(())
         }
         fn get_job(&self, job_id: u64) -> sails_rs::client::PendingCall<io::GetJob, Self::Env> {
             self.pending_call((job_id,))
@@ -268,6 +296,12 @@ pub mod market {
         fn top_up_bond(&mut self) -> sails_rs::client::PendingCall<io::TopUpBond, Self::Env> {
             self.pending_call(())
         }
+        fn withdraw(
+            &mut self,
+            amount: u128,
+        ) -> sails_rs::client::PendingCall<io::Withdraw, Self::Env> {
+            self.pending_call((amount,))
+        }
         fn withdraw_bond(&mut self) -> sails_rs::client::PendingCall<io::WithdrawBond, Self::Env> {
             self.pending_call(())
         }
@@ -276,14 +310,17 @@ pub mod market {
     pub mod io {
         use super::*;
         sails_rs::io_struct_impl!(AwardJob (job_id: u64) -> () | String, 0, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
-        sails_rs::io_struct_impl!(CreateJob (max_price_wei: u128, deadline_secs: u32, verifier_kind: String, criteria_hash: [u8; 32], policy: String, quote_window_secs: u32) -> u64 | String, 1, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
-        sails_rs::io_struct_impl!(GetJob (job_id: u64) -> super::Option<super::Job, >, 2, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
-        sails_rs::io_struct_impl!(ListJobs (status: super::Option<super::Status, >, cursor: u64, limit: u32) -> Vec<super::Job>, 3, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
-        sails_rs::io_struct_impl!(RegisterProvider () -> () | String, 4, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
-        sails_rs::io_struct_impl!(StartJob (job_id: u64) -> () | String, 5, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
-        sails_rs::io_struct_impl!(SubmitQuote (job_id: u64, price_wei: u128, promised_latency_ms: u32) -> () | String, 6, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
-        sails_rs::io_struct_impl!(TopUpBond () -> u128 | String, 7, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
-        sails_rs::io_struct_impl!(WithdrawBond () -> u128 | String, 8, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(BalanceOf (who: ActorId) -> u128, 1, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(CreateJob (escrow_wei: u128, max_price_wei: u128, deadline_secs: u32, verifier_kind: String, criteria_hash: [u8; 32], policy: String, quote_window_secs: u32) -> u64 | String, 2, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(Deposit () -> u128 | String, 3, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(GetJob (job_id: u64) -> super::Option<super::Job, >, 4, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(ListJobs (status: super::Option<super::Status, >, cursor: u64, limit: u32) -> Vec<super::Job>, 5, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(RegisterProvider () -> () | String, 6, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(StartJob (job_id: u64) -> () | String, 7, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(SubmitQuote (job_id: u64, price_wei: u128, promised_latency_ms: u32) -> () | String, 8, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(TopUpBond () -> u128 | String, 9, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(Withdraw (amount: u128) -> u128 | String, 10, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
+        sails_rs::io_struct_impl!(WithdrawBond () -> u128 | String, 11, <super::MarketImpl as sails_rs::client::Identifiable>::INTERFACE_ID);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -293,36 +330,50 @@ pub mod market {
         #[derive(PartialEq, Debug)]
         pub enum MarketEvents {
             #[codec(index = 0)]
+            Deposited {
+                who: Address,
+                amount: u128,
+                balance: u128,
+            },
+            #[codec(index = 1)]
             JobAwarded {
                 job_id: u64,
                 winner: Address,
                 reason: String,
             },
-            #[codec(index = 1)]
+            #[codec(index = 2)]
             JobCreated {
                 job_id: u64,
                 requester: Address,
                 max_price_wei: u128,
                 escrow_wei: u128,
             },
-            #[codec(index = 2)]
-            ProviderRegistered { provider: Address, bond_wei: u128 },
             #[codec(index = 3)]
+            ProviderRegistered { provider: Address, bond_wei: u128 },
+            #[codec(index = 4)]
             QuoteSubmitted {
                 job_id: u64,
                 provider: Address,
                 price_wei: u128,
                 promised_latency_ms: u32,
             },
+            #[codec(index = 5)]
+            Withdrawn {
+                who: Address,
+                amount: u128,
+                balance: u128,
+            },
         }
 
         impl MarketEvents {
             pub fn entry_id(&self) -> u16 {
                 match self {
-                    Self::JobAwarded { .. } => 0,
-                    Self::JobCreated { .. } => 1,
-                    Self::ProviderRegistered { .. } => 2,
-                    Self::QuoteSubmitted { .. } => 3,
+                    Self::Deposited { .. } => 0,
+                    Self::JobAwarded { .. } => 1,
+                    Self::JobCreated { .. } => 2,
+                    Self::ProviderRegistered { .. } => 3,
+                    Self::QuoteSubmitted { .. } => 4,
+                    Self::Withdrawn { .. } => 5,
                 }
             }
         }

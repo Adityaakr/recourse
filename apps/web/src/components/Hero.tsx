@@ -10,8 +10,13 @@ import type { Job, TimelineEvent } from "../lib/api.js";
 export function Hero({ jobs, timeline }: { jobs: Job[]; timeline: TimelineEvent[] }) {
   const paid = jobs.filter((j) => j.status === "Paid").length;
   const failed = jobs.filter((j) => j.status === "Refunded" || j.status === "Expired").length;
-  const measured = timeline.map((e) => e.measuredMs).filter((m): m is number => typeof m === "number");
-  const avgMs = measured.length ? Math.round(measured.reduce((a, b) => a + b, 0) / measured.length) : null;
+  // Headline latency is the provider-promised SLA from live quotes (real,
+  // on-chain, the number the market competes on). The measured send-to-receipt
+  // round-trip is shown per action in the Live view; it's genuine network RTT
+  // and honestly higher than the SLA, so it isn't the headline.
+  const promised = jobs.flatMap((j) => j.quotes.map((q) => q.promisedLatencyMs));
+  const avgSla = promised.length ? Math.round(promised.reduce((a, b) => a + b, 0) / promised.length) : null;
+  void timeline;
 
   return (
     <div className="grid h-[86px] shrink-0 grid-cols-[1fr_auto] border border-border bg-card">
@@ -19,7 +24,7 @@ export function Hero({ jobs, timeline }: { jobs: Job[]; timeline: TimelineEvent[
         <Metric label="Jobs routed" value={String(jobs.length)} tone="fg" />
         <Metric label="Paid" value={String(paid)} tone="pass" />
         <Metric label="Refunded / slashed" value={String(failed)} tone="fail" />
-        <Metric label="Avg injected" value={avgMs !== null ? ms(avgMs) : "n/a"} tone="injected" />
+        <Metric label="Quoted latency" value={avgSla !== null ? ms(avgSla) : "n/a"} tone="injected" />
       </div>
       <div className="hidden h-[86px] w-[110px] shrink-0 border-l border-border md:block">
         <Suspense fallback={<div className="h-full w-full animate-pulse bg-muted" />}>

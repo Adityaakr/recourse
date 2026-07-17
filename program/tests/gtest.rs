@@ -68,11 +68,23 @@ async fn awarded_job(
         .unwrap()
         .unwrap();
 
+    // Load the escrow into the requester's internal balance once (the one
+    // value-bearing/payable call), then fund the job with a valueless call —
+    // on-chain this second leg rides the gasless injected lane.
+    market
+        .deposit()
+        .with_actor_id(actor(REQUESTER))
+        .with_value(ESCROW)
+        .await
+        .unwrap()
+        .unwrap();
+
     // gtest's block_timestamp is in MILLISECONDS (3000/block), so the window
     // and deadline are sized in ms here (30_000 = 30 "gtest seconds"). The
     // program does not scale time; on-chain these are passed in seconds.
     let job_id = market
         .create_job(
+            ESCROW,
             MAX_PRICE,
             30_000,
             "unit-tests-v1".into(),
@@ -81,7 +93,6 @@ async fn awarded_job(
             30_000,
         )
         .with_actor_id(actor(REQUESTER))
-        .with_value(ESCROW)
         .await
         .unwrap()
         .unwrap();
@@ -157,12 +168,16 @@ async fn pass_flow_pays_winner_and_returns_change() {
     assert_eq!(job.status, Status::Paid);
     assert_eq!(job.settled, Some(Outcome::Paid));
 
-    // gtest-ethexe mirrors the real chain: program-to-user value leaves
-    // the program and becomes claimable on L1 (mirror.claimValue) rather
-    // than crediting user balances here. The program-side balance is the
-    // observable conservation check: all escrow left, both bonds remain.
-    // The user-side claim leg is exercised on hoodi at M2.
-    assert_eq!(env.system().balance_of(program.id()), 2 * BOND);
+    // In the vault model nothing leaves on settlement — the payout is a credit
+    // to the winner's internal balance and the change to the requester's, both
+    // still held by the program. So the program keeps every unit deposited:
+    // two bonds + the escrow.
+    assert_eq!(env.system().balance_of(program.id()), 2 * BOND + ESCROW);
+    // The conservation check that matters now is the internal ledger split:
+    // winner credited the quoted price, requester the escrow change.
+    let mut market = program.market();
+    assert_eq!(market.balance_of(actor(BOT_A)).await.unwrap(), PRICE_A);
+    assert_eq!(market.balance_of(actor(REQUESTER)).await.unwrap(), ESCROW - PRICE_A);
 
     let p = program
         .settlement()
@@ -196,13 +211,16 @@ async fn fail_flow_refunds_slashes_and_retains() {
     let job = program.market().get_job(job_id).await.unwrap().unwrap();
     assert_eq!(job.status, Status::Refunded);
 
-    // Program keeps both bonds minus the slash, plus the retained half;
-    // the escrow and the requester's slash share left as claimable value.
-    assert_eq!(
-        env.system().balance_of(program.id()),
-        2 * BOND - SLASH + (SLASH - SLASH / 2)
-    );
+    // Nothing left the program: the slash moved bond -> retained, the refund
+    // moved escrow + slash share -> the requester's internal balance, all still
+    // held. Program balance is exactly everything deposited: two bonds + escrow.
+    assert_eq!(env.system().balance_of(program.id()), 2 * BOND + ESCROW);
     assert_eq!(settlement.get_retained_wei().await.unwrap(), SLASH - SLASH / 2);
+    // Requester's balance: full escrow refund + its half of the slash.
+    assert_eq!(
+        program.market().balance_of(actor(REQUESTER)).await.unwrap(),
+        ESCROW + SLASH / 2
+    );
 
     let p = settlement.get_provider(actor(BOT_A)).await.unwrap().unwrap();
     assert_eq!(p.bond_wei, BOND - SLASH);
@@ -237,10 +255,12 @@ async fn expiry_refunds_and_counts_against_provider() {
     let job = program.market().get_job(job_id).await.unwrap().unwrap();
     assert_eq!(job.status, Status::Expired);
     assert_eq!(job.settled, Some(Outcome::Refunded));
-    // Escrow + slash share left the program as claimable value.
+    // Nothing left the program; the refund + slash share credited the
+    // requester's internal balance. Program holds two bonds + escrow.
+    assert_eq!(env.system().balance_of(program.id()), 2 * BOND + ESCROW);
     assert_eq!(
-        env.system().balance_of(program.id()),
-        2 * BOND - SLASH + (SLASH - SLASH / 2)
+        program.market().balance_of(actor(REQUESTER)).await.unwrap(),
+        ESCROW + SLASH / 2
     );
 
     let p = settlement.get_provider(actor(BOT_A)).await.unwrap().unwrap();
@@ -284,6 +304,43 @@ async fn settlement_is_exactly_once() {
         .unwrap();
     assert!(expire.is_err());
 
-    // Paid exactly once: program balance is exactly the two bonds.
-    assert_eq!(env.system().balance_of(program.id()), 2 * BOND);
+    // Paid exactly once: no double-credit. Program still holds every unit
+    // deposited (two bonds + escrow), and the winner's internal balance is
+    // exactly one quoted price, not two.
+    assert_eq!(env.system().balance_of(program.id()), 2 * BOND + ESCROW);
+    assert_eq!(program.market().balance_of(actor(BOT_A)).await.unwrap(), PRICE_A);
+}
+
+#[tokio::test]
+async fn withdraw_moves_value_out_of_the_program() {
+    // The one place value actually leaves in the vault model: a withdraw turns
+    // an internal balance back into real value the caller claims on L1.
+    let (env, program) = deploy(b"withdraw").await;
+    let job_id = awarded_job(&env, &program).await;
+    let mut settlement = program.settlement();
+    settlement
+        .submit_receipt(job_id, H256::from([9u8; 32]), "mock".into())
+        .with_actor_id(actor(BOT_A))
+        .await
+        .unwrap()
+        .unwrap();
+    settlement
+        .submit_verdict(job_id, true, H256::from([1u8; 32]))
+        .with_actor_id(actor(VERIFIER))
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Winner earned PRICE_A; withdrawing it moves that value out of the program.
+    let before = env.system().balance_of(program.id());
+    let mut market = program.market();
+    let remaining = market
+        .withdraw(PRICE_A)
+        .with_actor_id(actor(BOT_A))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(remaining, 0);
+    assert_eq!(market.balance_of(actor(BOT_A)).await.unwrap(), 0);
+    assert_eq!(env.system().balance_of(program.id()), before - PRICE_A);
 }

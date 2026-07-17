@@ -46,6 +46,27 @@ export async function ensureBonded(r: Recourse, role: Role) {
   await r.l1(role, "Market", p ? "TopUpBond" : "RegisterProvider", [], need);
 }
 
+/**
+ * Make sure a role's internal balance covers `amount`, depositing the shortfall
+ * on L1 if needed. This is the one gas payment behind gasless funding: value
+ * can only enter the program on the classic lane (injected calls are purged if
+ * they carry value), so we load the balance once, then spend it via injected
+ * `create_job`.
+ */
+export async function ensureDeposited(r: Recourse, role: Role, amount: bigint) {
+  const actor = r.actorId(role);
+  const have = await r.balanceOf(actor);
+  if (have >= amount) return;
+  await r.l1(role, "Market", "Deposit", [], amount - have);
+  // The deposit is an L1 message; the tx confirming does not mean the program
+  // has processed it. Wait for the credit to land before the caller funds.
+  for (let i = 0; i < 20; i++) {
+    if ((await r.balanceOf(actor)) >= amount) return;
+    await sleep(3000);
+  }
+  throw new Error(`deposit for ${role} did not credit in time`);
+}
+
 async function nextJobId(r: Recourse): Promise<number> {
   for (let i = 0; i < 256; i++) if (!(await r.getJob(i))) return i;
   throw new Error("no free job id");
@@ -76,12 +97,15 @@ export async function runJob(
   for (const b of bots) await ensureBonded(r, makePersona(b).role);
 
   const jobId = await nextJobId(r);
-  await r.l1("requester", "Market", "CreateJob", [
-    params.maxPriceWei, params.deadlineSecs, "unit-tests-v1",
+  // One L1 deposit loads the escrow into the requester's internal balance...
+  await ensureDeposited(r, "requester", params.escrowWei);
+  // ...then funding the job is a gasless injected call that debits it.
+  const { ms: fundMs } = await r.injected("requester", "Market", "CreateJob", [
+    params.escrowWei, params.maxPriceWei, params.deadlineSecs, "unit-tests-v1",
     hexToBytes32(task.criteriaHash), params.policy, params.quoteWindowSecs,
-  ], params.escrowWei);
+  ]);
   await waitFor(r, jobId, (s) => s === "Open");
-  log(`job ${jobId} created (${params.policy}), Open`);
+  log(`job ${jobId} created (${params.policy}), Open — funded gasless on the injected lane in ${fundMs}ms`);
 
   // Each persona quotes on the injected lane.
   const quoteMs: Record<string, number> = {};

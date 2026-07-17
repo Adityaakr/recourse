@@ -175,8 +175,8 @@ function encodeTuple(tokens: readonly Token[], args: unknown[]): Uint8Array {
 // ─── method registry (from recourse_client.rs / recourse.idl) ────────────────
 
 const INTERFACE_ID = {
-  Market: '826b9458701ee226', // recourse.idl:4, recourse_client.rs:209
-  Settlement: 'c0fc606f9a1d8fff', // recourse.idl:130, recourse_client.rs:410
+  Market: '12c239d44571850c', // recourse.idl:4 (changed when deposit/withdraw/balance_of were added)
+  Settlement: 'c0fc606f9a1d8fff', // recourse.idl:154
 } as const;
 
 const ROUTE_ID = {
@@ -193,15 +193,20 @@ interface MethodDef {
 
 const METHODS: Record<ServiceName, Record<string, MethodDef>> = {
   Market: {
+    // entry_id is the method's 0-based position in alphabetical/IDL order
+    // (recourse.idl:4-84). Adding BalanceOf/Deposit/Withdraw reshuffled these.
     AwardJob: { entryId: 0, params: ['u64'] },
-    CreateJob: { entryId: 1, params: ['u128', 'u32', 'String', 'bytes32', 'String', 'u32'] },
-    GetJob: { entryId: 2, params: ['u64'] },
-    ListJobs: { entryId: 3, params: ['Option<Status>', 'u64', 'u32'] },
-    RegisterProvider: { entryId: 4, params: [] },
-    StartJob: { entryId: 5, params: ['u64'] },
-    SubmitQuote: { entryId: 6, params: ['u64', 'u128', 'u32'] },
-    TopUpBond: { entryId: 7, params: [] },
-    WithdrawBond: { entryId: 8, params: [] },
+    BalanceOf: { entryId: 1, params: ['bytes32'] }, // (who: ActorId) -> u128
+    CreateJob: { entryId: 2, params: ['u128', 'u128', 'u32', 'String', 'bytes32', 'String', 'u32'] }, // escrow_wei first
+    Deposit: { entryId: 3, params: [] }, // payable -> u128
+    GetJob: { entryId: 4, params: ['u64'] },
+    ListJobs: { entryId: 5, params: ['Option<Status>', 'u64', 'u32'] },
+    RegisterProvider: { entryId: 6, params: [] },
+    StartJob: { entryId: 7, params: ['u64'] },
+    SubmitQuote: { entryId: 8, params: ['u64', 'u128', 'u32'] },
+    TopUpBond: { entryId: 9, params: [] },
+    Withdraw: { entryId: 10, params: ['u128'] }, // (amount) -> u128
+    WithdrawBond: { entryId: 11, params: [] },
   },
   Settlement: {
     ExpireJob: { entryId: 0, params: ['u64'] },

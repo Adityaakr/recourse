@@ -51,7 +51,13 @@ async function main() {
         }
       }
     } catch (e) {
-      log.error({ err: String(e) }, "poll failed");
+      const msg = String(e);
+      // Expected during the SDK's background reconnect; retry immediately.
+      if (msg.includes("manually closed") || msg.includes("Connection")) {
+        await new Promise((res) => setTimeout(res, 300));
+        continue;
+      }
+      log.error({ err: msg }, "poll failed");
     }
     await new Promise((res) => setTimeout(res, POLL_MS));
   }

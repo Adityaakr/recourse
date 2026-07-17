@@ -54,7 +54,7 @@ export function SettlementReceipt({ job, config }: { job: Job | null; config: Co
 
           {job.verdict && (
             <div className="border border-border bg-muted/30 px-2.5 py-1.5 text-[10.5px] text-muted-fg">
-              Verdict signed by the verifier · evidence <Mono>{job.verdict.evidenceHash.slice(0, 12)}…</Mono>
+              Verdict signed by the verifier · evidence <span className="tnum" title={job.verdict.evidenceHash}>{job.verdict.evidenceHash.slice(0, 12)}…</span> · see grading in Live
             </div>
           )}
         </div>

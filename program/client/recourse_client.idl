@@ -1,8 +1,13 @@
 
 !@sails: 2.0.0
 
-service Market@0x826b9458701ee226 {
+service Market@0x12c239d44571850c {
     events {
+        Deposited {
+            who: Address,
+            amount: u128,
+            balance: u128,
+        },
         JobAwarded {
             job_id: u64,
             winner: Address,
@@ -24,6 +29,11 @@ service Market@0x826b9458701ee226 {
             price_wei: u128,
             promised_latency_ms: u32,
         },
+        Withdrawn {
+            who: Address,
+            amount: u128,
+            balance: u128,
+        },
     }
     functions {
         /// Award after the quote window closes. Callable by anyone (frontend
@@ -31,13 +41,23 @@ service Market@0x826b9458701ee226 {
         /// the reason (policy + losing quote indices) is stored on the job.
         /// With no valid quotes the job expires and escrow is refunded.
         AwardJob(job_id: u64) throws String;
-        /// Fund a job. Escrow must cover the worst case (value >= max price);
-        /// at settlement the winner gets the quoted price and the difference
-        /// returns to the requester.
-        /// Payable requires the ethabi transport (macro-enforced), so params
-        /// are SolValue-friendly: enums ride as strings, hashes as [u8; 32].
+        @codec: scale
+        @query
+        BalanceOf(who: ActorId) -> u128;
+        /// Fund a job by debiting your internal balance. Injected-lane method: it
+        /// carries no value (escrow is spent from the balance loaded via
+        /// `deposit`), so funding is a gasless signature. Escrow must cover the
+        /// worst case (escrow >= max price); at settlement the winner is credited
+        /// the quoted price and the difference returns to the requester's balance.
+        @codec: scale
+        CreateJob(escrow_wei: u128, max_price_wei: u128, deadline_secs: u32, verifier_kind: String, criteria_hash: [u8; 32], policy: String, quote_window_secs: u32) -> u64 throws String;
+        /// Load your internal balance. This is the ONE gas payment a requester
+        /// makes (payable -> L1): value can only enter the program on the classic
+        /// lane, because an injected transaction that carries value is purged
+        /// before execution (`NonZeroValue`). Once loaded, funding jobs spends
+        /// this balance gaslessly on the injected lane. (vault pattern)
         @payable
-        CreateJob(max_price_wei: u128, deadline_secs: u32, verifier_kind: String, criteria_hash: [u8; 32], policy: String, quote_window_secs: u32) -> u64 throws String;
+        Deposit() -> u128 throws String;
         @codec: scale
         @query
         GetJob(job_id: u64) -> Option<Job>;
@@ -54,6 +74,10 @@ service Market@0x826b9458701ee226 {
         SubmitQuote(job_id: u64, price_wei: u128, promised_latency_ms: u32) throws String;
         @payable
         TopUpBond() -> u128 throws String;
+        /// Cash an internal balance back out to L1 (the "claim" gas boundary).
+        /// Value rides the reply; the caller claims it via mirror.claimValue.
+        @returns_value
+        Withdraw(amount: u128) -> u128 throws String;
         /// Withdraw the full bond and deregister. Only with no active job.
         /// Value rides the reply to the caller (vault pattern).
         @returns_value
@@ -199,7 +223,7 @@ program RecourseClient {
         Create(verifier: ActorId, bond_wei: u128, slash_wei: u128, slash_to_requester_bps: u32);
     }
     services {
-        Market@0x826b9458701ee226,
+        Market@0x12c239d44571850c,
         Settlement@0xc0fc606f9a1d8fff,
     }
 }

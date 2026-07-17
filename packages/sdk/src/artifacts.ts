@@ -33,3 +33,9 @@ export function putEvidence(jobId: number, text: string): Hex {
   writeFileSync(join(ARTIFACT_DIR, `evidence-${jobId}.txt`), text);
   return hash;
 }
+
+/** Fetch the verifier's evidence bundle (the raw test output) for a job. */
+export function getEvidence(jobId: number): string | null {
+  const path = join(ARTIFACT_DIR, `evidence-${jobId}.txt`);
+  return existsSync(path) ? readFileSync(path, "utf8") : null;
+}

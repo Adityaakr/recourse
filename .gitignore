@@ -9,9 +9,11 @@ dist/
 .env.*
 !.env.example
 
-# data
+# data + runtime artifacts (delivered solutions, verifier evidence)
 *.sqlite
 *.sqlite-journal
+.artifacts/
+*.tsbuildinfo
 
 # local
 .DS_Store

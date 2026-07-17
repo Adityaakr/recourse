@@ -52,7 +52,7 @@ function signer(role: Role) {
   return walletClientToSigner(wc);
 }
 
-/** L1 value/command call through the mirror (register_provider, create_job). */
+/** L1 value/command call through the mirror (register_provider, deposit). */
 async function l1(role: Role, service: ServiceName, method: string, args: unknown[], value: bigint) {
   const mirror = getMirrorClient({ address: programId, publicClient, signer: signer(role) });
   const payload = encodeCall(service, method, args);
@@ -165,14 +165,42 @@ async function waitForStatus(jobId: number, want: (s: string) => boolean, label:
   throw new Error(`timed out waiting for job ${jobId} to be ${label} (last read stuck)`);
 }
 
+/** Read a role's internal (vault-ledger) balance in wei. */
+async function balanceOf(role: Role): Promise<bigint> {
+  const source = `0x${"00".repeat(20)}`;
+  const actorId = `0x${"00".repeat(12)}${account(role).address.slice(2)}` as Hex;
+  const payload = encodeCall("Market", "BalanceOf", [actorId]);
+  const reply = await api.call.program.calculateReplyForHandle(source, programId, payload);
+  const inner = decodeReply(reply.payload as Hex).payload.replace(/^0x/, "");
+  const bytes = Uint8Array.from(inner.match(/../g)?.map((b) => parseInt(b, 16)) ?? []);
+  let v = 0n;
+  for (let i = 15; i >= 0; i--) v = (v << 8n) + BigInt(bytes[i] ?? 0); // u128 LE
+  return v;
+}
+
 async function createJob(policy: "cheapest" | "assured"): Promise<number> {
   const id = await nextJobId();
-  await l1(
+  // Load the escrow into the requester's internal balance once on L1. The
+  // deposit is an L1 message: the tx confirming does NOT mean the program has
+  // processed it, so poll the balance until the credit lands before funding.
+  if ((await balanceOf("requester")) < ESCROW) {
+    await l1("requester", "Market", "Deposit", [], ESCROW);
+    let credited = false;
+    for (let i = 0; i < 20; i++) {
+      if ((await balanceOf("requester")) >= ESCROW) { credited = true; break; }
+      await sleep(3000);
+    }
+    if (!credited) throw new Error("deposit did not credit the internal balance in time");
+    console.log(`  bal requester internal balance funded (${ESCROW} wei) ✓`);
+  }
+  // Now funding the job is a gasless injected call that debits the balance.
+  // This is the whole point: value enters on the classic lane, funding rides
+  // injected (no value, no gas).
+  await injected(
     "requester",
     "Market",
     "CreateJob",
-    [MAX_PRICE, DEADLINE, "unit-tests-v1", new Uint8Array(32).fill(7), policy, QUOTE_WINDOW],
-    ESCROW,
+    [ESCROW, MAX_PRICE, DEADLINE, "unit-tests-v1", new Uint8Array(32).fill(7), policy, QUOTE_WINDOW],
   );
   await waitForStatus(id, (s) => s === "Open", "Open");
   return id;

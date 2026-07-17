@@ -4,15 +4,18 @@
 // quotes, award), settlement (receipt, verdict, expiry, payout) with the
 // reputation counters living on Provider records.
 //
-// Value model (native mirror flow, kickoff §3):
-//   in : payable methods read Syscall::message_value()
-//        (sails-rs 2.0.0 src/gstd/syscalls.rs:34)
-//   out: third-party payouts via gstd::msg::send_bytes(dest, [], value)
-//        (gstd 2.0.0 src/msg/basic.rs:530, re-exported at
-//        sails-rs 2.0.0 src/gstd/mod.rs:11; no gas parameter — ethexe-safe).
-//        Reply-to-caller value uses CommandReply::with_value
-//        (sails-rs 2.0.0 src/gstd/mod.rs:44). Recipients claim on L1 via
+// Value model (vault ledger, kickoff §3):
+//   Value crosses the L1 boundary only twice, and only on payable/reply paths
+//   because an injected transaction that carries value is purged before
+//   execution (`NonZeroValue`, @vara-eth/api receipt.d.ts):
+//   in : `deposit` (payable) and `register_provider`/`top_up_bond` (bonds)
+//        read Syscall::message_value() (sails-rs 2.0.0 src/gstd/syscalls.rs:34).
+//   out: `withdraw` and `withdraw_bond` return CommandReply::with_value
+//        (sails-rs 2.0.0 src/gstd/mod.rs:44); the caller claims on L1 via
 //        mirror.claimValue.
+//   Everything between — funding a job, paying a winner, refunding change,
+//        routing a slash share — is a gasless move in the `balances` ledger
+//        (see `credit`), so `create_job` needs no value and runs injected.
 //   time: Syscall::block_timestamp() -> u64, in the runtime's native unit —
 //        UNIX SECONDS on ethexe/hoodi (measured live), MILLISECONDS under
 //        gtest. The program is unit-agnostic: it never scales, comparing
@@ -26,8 +29,6 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use core::cell::RefCell;
-#[cfg(target_arch = "wasm32")]
-use sails_rs::gstd::msg;
 use sails_rs::prelude::*;
 
 pub type JobId = u64;
@@ -169,6 +170,21 @@ pub struct AppState {
     /// Slash remainder that stays locked in the program (kickoff §2: no
     /// burns or fee routing in v1). Tracked so value conservation is testable.
     pub retained_wei: u128,
+    /// Requester/winner spendable balances held inside the program (the vault
+    /// ledger). Value enters once via `deposit` (payable, L1) and leaves via
+    /// `withdraw` (L1 claim); everything in between — funding a job, paying a
+    /// winner, refunding change — is a gasless move between entries here, so
+    /// `create_job` needs no `msg.value` and runs on the injected lane.
+    pub balances: BTreeMap<ActorId, u128>,
+}
+
+/// Credit an internal balance. The gasless counterpart to a value send: no
+/// syscall, just a ledger move, so it is safe to call from settlement.
+fn credit(state: &mut AppState, to: ActorId, amount: u128) {
+    if amount == 0 {
+        return;
+    }
+    *state.balances.entry(to).or_insert(0) += amount;
 }
 
 impl AppState {
@@ -213,6 +229,8 @@ fn reputation_score(p: &Provider) -> (u32, u128) {
 #[sails_rs::event]
 #[sails_rs::sails_type]
 pub enum MarketEvents {
+    Deposited { who: Address, amount: u128, balance: u128 },
+    Withdrawn { who: Address, amount: u128, balance: u128 },
     ProviderRegistered { provider: Address, bond_wei: u128 },
     JobCreated { job_id: u64, requester: Address, max_price_wei: u128, escrow_wei: u128 },
     QuoteSubmitted { job_id: u64, provider: Address, price_wei: u128, promised_latency_ms: u32 },
@@ -244,6 +262,62 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Market<S> {
 
 #[sails_rs::service(events = MarketEvents)]
 impl<S: StateMut<Item = AppState, Error = Infallible>> Market<S> {
+    /// Load your internal balance. This is the ONE gas payment a requester
+    /// makes (payable -> L1): value can only enter the program on the classic
+    /// lane, because an injected transaction that carries value is purged
+    /// before execution (`NonZeroValue`). Once loaded, funding jobs spends
+    /// this balance gaslessly on the injected lane. (vault pattern)
+    #[export(payable, unwrap_result)]
+    pub fn deposit(&mut self) -> Result<u128, String> {
+        let who = Syscall::message_source();
+        let value = Syscall::message_value();
+        let mut state = self.state.get_mut();
+        let bal = state.balances.entry(who).or_insert(0);
+        *bal = bal.saturating_add(value);
+        let balance = *bal;
+        drop(state);
+        self.emit_event(MarketEvents::Deposited {
+            who: Address::from(who),
+            amount: value,
+            balance,
+        })
+        .unwrap();
+        Ok(balance)
+    }
+
+    /// Cash an internal balance back out to L1 (the "claim" gas boundary).
+    /// Value rides the reply; the caller claims it via mirror.claimValue.
+    #[export(unwrap_result)]
+    pub fn withdraw(&mut self, amount: u128) -> Result<CommandReply<u128>, String> {
+        if amount == 0 {
+            return Err("withdraw amount must be positive".into());
+        }
+        let who = Syscall::message_source();
+        let mut state = self.state.get_mut();
+        let bal = state
+            .balances
+            .get_mut(&who)
+            .ok_or("no internal balance to withdraw")?;
+        if *bal < amount {
+            return Err(format!("insufficient balance: have {}, want {amount}", *bal));
+        }
+        *bal -= amount;
+        let balance = *bal;
+        drop(state);
+        self.emit_event(MarketEvents::Withdrawn {
+            who: Address::from(who),
+            amount,
+            balance,
+        })
+        .unwrap();
+        Ok(CommandReply::new(balance).with_value(amount))
+    }
+
+    #[export(scale)]
+    pub fn balance_of(&self, who: ActorId) -> u128 {
+        self.state.get().balances.get(&who).copied().unwrap_or(0)
+    }
+
     /// Post a bond and become a quotable provider. One provider per owner.
     #[export(payable, unwrap_result)]
     pub fn register_provider(&mut self) -> Result<(), String> {
@@ -309,14 +383,15 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Market<S> {
         Ok(CommandReply::new(bond).with_value(bond))
     }
 
-    /// Fund a job. Escrow must cover the worst case (value >= max price);
-    /// at settlement the winner gets the quoted price and the difference
-    /// returns to the requester.
-    /// Payable requires the ethabi transport (macro-enforced), so params
-    /// are SolValue-friendly: enums ride as strings, hashes as [u8; 32].
-    #[export(scale, ethabi, payable, unwrap_result)]
+    /// Fund a job by debiting your internal balance. Injected-lane method: it
+    /// carries no value (escrow is spent from the balance loaded via
+    /// `deposit`), so funding is a gasless signature. Escrow must cover the
+    /// worst case (escrow >= max price); at settlement the winner is credited
+    /// the quoted price and the difference returns to the requester's balance.
+    #[export(scale, unwrap_result)]
     pub fn create_job(
         &mut self,
+        escrow_wei: u128,
         max_price_wei: u128,
         deadline_secs: u32,
         verifier_kind: String,
@@ -325,7 +400,7 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Market<S> {
         quote_window_secs: u32,
     ) -> Result<u64, String> {
         let requester = Syscall::message_source();
-        let value = Syscall::message_value();
+        let value = escrow_wei;
         let verifier_kind = match verifier_kind.as_str() {
             "unit-tests-v1" => VerifierKind::UnitTestsV1,
             "json-schema-v1" => VerifierKind::JsonSchemaV1,
@@ -349,6 +424,15 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Market<S> {
             return Err("deadline and quote window must be positive".into());
         }
         let mut state = self.state.get_mut();
+        // Debit the escrow from the requester's internal balance. This is where
+        // "funding" actually moves value now — gaslessly, on the injected lane.
+        let have = state.balances.get(&requester).copied().unwrap_or(0);
+        if have < escrow_wei {
+            return Err(format!(
+                "insufficient balance: have {have}, need {escrow_wei}; deposit first"
+            ));
+        }
+        *state.balances.get_mut(&requester).expect("checked above") -= escrow_wei;
         let id = state.next_job_id;
         state.next_job_id += 1;
         state.jobs.insert(
@@ -494,7 +578,7 @@ impl<S: StateMut<Item = AppState, Error = Infallible>> Market<S> {
                 job.award_reason = Some("no valid quotes at award; escrow refunded".into());
                 (job.spec.requester, job.spec.escrow_wei)
             };
-            send_value(requester, escrow);
+            credit(&mut state, requester, escrow);
             drop(state);
             self.emit_event(MarketEvents::JobAwarded {
                 job_id,
@@ -794,10 +878,11 @@ fn settle(state: &mut AppState, job_id: JobId, how: SettleAs) -> Result<Settled,
 
     let (outcome, status, settled) = match how {
         SettleAs::Pass => {
-            // Pay the quoted price; the escrow difference returns home.
-            send_value(winner_id, price);
+            // Credit the quoted price; the escrow difference returns home. Both
+            // land in internal balances — gasless, claimed later via withdraw.
+            credit(state, winner_id, price);
             let change = escrow - price; // escrow >= max_price >= price
-            send_value(requester, change);
+            credit(state, requester, change);
             (
                 Outcome::Paid,
                 Status::Paid,
@@ -812,15 +897,18 @@ fn settle(state: &mut AppState, job_id: JobId, how: SettleAs) -> Result<Settled,
         SettleAs::Fail | SettleAs::Expire => {
             // Full refund plus the requester's share of the bond slash;
             // the remainder of the slash stays locked in the program.
-            let provider = state
-                .providers
-                .get_mut(&winner_id)
-                .expect("active provider exists");
-            let slash = state.config.slash_wei.min(provider.bond_wei);
-            provider.bond_wei -= slash;
+            let slash = {
+                let provider = state
+                    .providers
+                    .get_mut(&winner_id)
+                    .expect("active provider exists");
+                let slash = state.config.slash_wei.min(provider.bond_wei);
+                provider.bond_wei -= slash;
+                slash
+            };
             let to_requester = slash * (state.config.slash_to_requester_bps as u128) / 10_000;
             state.retained_wei += slash - to_requester;
-            send_value(requester, escrow + to_requester);
+            credit(state, requester, escrow + to_requester);
             let status = if matches!(how, SettleAs::Expire) {
                 Status::Expired
             } else {
@@ -854,20 +942,6 @@ fn settle(state: &mut AppState, job_id: JobId, how: SettleAs) -> Result<Settled,
     job.status = status;
     job.settled = Some(outcome);
     Ok(settled)
-}
-
-/// Third-party value send. Verified: gstd 2.0.0 `msg::send_bytes` carries
-/// value and takes no gas parameter (src/msg/basic.rs:530) — allowed on
-/// ethexe. On L1 the recipient claims via mirror.claimValue. No-op off
-/// wasm so service-level unit tests can drive settlement directly.
-fn send_value(to: ActorId, value: u128) {
-    if value == 0 {
-        return;
-    }
-    #[cfg(target_arch = "wasm32")]
-    msg::send_bytes(to, [], value).expect("value send failed");
-    #[cfg(not(target_arch = "wasm32"))]
-    let _ = (to, value);
 }
 
 // --------------------------------------------------------------- program
@@ -962,15 +1036,24 @@ mod tests {
         market!(s).register_provider().unwrap();
     }
 
+    /// Load an internal balance so a requester can fund jobs. In production
+    /// this is the one L1 gas payment; in tests it is a direct call with
+    /// `message_value` set (the payable path).
+    fn deposit(s: &RefCell<AppState>, actor: u64, amount: u128) {
+        as_actor(actor, amount, 0);
+        market!(s).deposit().unwrap();
+    }
+
     /// Open a standard job. Windows are expressed in the unit-test clock's
     /// unit (these tests set `block_timestamp` in ms via the Syscall shim),
     /// so a 10-"second" window is 10_000 and a 30-"second" deadline is
     /// 30_000. The program does not scale — see the module time note.
-    /// max price 1000, escrow 1500, cheapest policy. Returns the job id.
+    /// escrow 1500 (deposited first), max price 1000. Returns the job id.
     fn open_job(s: &RefCell<AppState>, policy: &str) -> u64 {
-        as_actor(REQUESTER, 1_500, 1_000);
+        deposit(s, REQUESTER, 1_500);
+        as_actor(REQUESTER, 0, 1_000);
         market!(s)
-            .create_job(1_000, 30_000, "unit-tests-v1".into(), [7u8; 32], policy.into(), 10_000)
+            .create_job(1_500, 1_000, 30_000, "unit-tests-v1".into(), [7u8; 32], policy.into(), 10_000)
             .unwrap()
     }
 
@@ -1044,31 +1127,58 @@ mod tests {
     #[test]
     fn create_job_validates_escrow_terms_and_enums() {
         let s = state();
-        as_actor(REQUESTER, 999, 0); // escrow below max price
+        as_actor(REQUESTER, 0, 0);
+        // escrow below max price (terms are validated before any balance debit)
         assert!(market!(&s)
-            .create_job(1_000, 30, "unit-tests-v1".into(), [0u8; 32], "cheapest".into(), 10)
+            .create_job(999, 1_000, 30, "unit-tests-v1".into(), [0u8; 32], "cheapest".into(), 10)
             .unwrap_err()
             .contains("does not cover"));
-
-        as_actor(REQUESTER, 1_500, 0);
         assert!(market!(&s)
-            .create_job(1_000, 0, "unit-tests-v1".into(), [0u8; 32], "cheapest".into(), 10)
+            .create_job(1_500, 1_000, 0, "unit-tests-v1".into(), [0u8; 32], "cheapest".into(), 10)
             .is_err());
         assert!(market!(&s)
-            .create_job(1_000, 30, "unit-tests-v1".into(), [0u8; 32], "balanced".into(), 10)
+            .create_job(1_500, 1_000, 30, "unit-tests-v1".into(), [0u8; 32], "balanced".into(), 10)
             .unwrap_err()
             .contains("unknown policy"));
         assert!(market!(&s)
-            .create_job(1_000, 30, "tee-v9".into(), [0u8; 32], "cheapest".into(), 10)
+            .create_job(1_500, 1_000, 30, "tee-v9".into(), [0u8; 32], "cheapest".into(), 10)
             .unwrap_err()
             .contains("unknown verifier kind"));
 
+        // Well-formed terms but no deposited balance: funding is refused.
+        assert!(market!(&s)
+            .create_job(1_500, 1_000, 30, "unit-tests-v1".into(), [0u8; 32], "cheapest".into(), 10)
+            .unwrap_err()
+            .contains("deposit first"));
+
+        deposit(&s, REQUESTER, 1_500);
+        as_actor(REQUESTER, 0, 0);
         let id = market!(&s)
-            .create_job(1_000, 30, "unit-tests-v1".into(), [0u8; 32], "cheapest".into(), 10)
+            .create_job(1_500, 1_000, 30, "unit-tests-v1".into(), [0u8; 32], "cheapest".into(), 10)
             .unwrap();
         let job = market!(&s).get_job(id).unwrap();
         assert_eq!(job.status, Status::Open);
         assert_eq!(job.spec.escrow_wei, 1_500);
+        // Balance was debited by exactly the escrow.
+        assert_eq!(market!(&s).balance_of(ActorId::from(REQUESTER)), 0);
+    }
+
+    #[test]
+    fn deposit_withdraw_round_trips_internal_balance() {
+        let s = state();
+        deposit(&s, REQUESTER, 5_000);
+        assert_eq!(market!(&s).balance_of(ActorId::from(REQUESTER)), 5_000);
+        deposit(&s, REQUESTER, 1_000); // deposits accumulate
+        assert_eq!(market!(&s).balance_of(ActorId::from(REQUESTER)), 6_000);
+
+        as_actor(REQUESTER, 0, 0);
+        assert!(market!(&s).withdraw(9_999).err().unwrap().contains("insufficient"));
+        let (remaining, value) = market!(&s).withdraw(2_000).map(CommandReply::to_tuple).unwrap();
+        assert_eq!((remaining, value), (4_000, 2_000)); // reply carries the value out
+        assert_eq!(market!(&s).balance_of(ActorId::from(REQUESTER)), 4_000);
+
+        as_actor(PROV_A, 0, 0); // never deposited
+        assert!(market!(&s).withdraw(1).err().unwrap().contains("no internal balance"));
     }
 
     // ----------------------------------------------------------- quotes
@@ -1372,54 +1482,60 @@ mod tests {
 
     // ----------------------------------------------------- conservation
 
-    /// Book-keeping identity over a mixed history: everything that came in
-    /// is either recorded as outbound (settled numbers), still locked
-    /// (bonds), or retained (slash remainder).
+    /// Book-keeping identity over a mixed history. In the vault model value
+    /// never leaves the program during settlement — it moves between ledgers.
+    /// So everything that came in (deposits + bonds) must still be accounted
+    /// for as internal balances + locked bonds + retained slash remainder,
+    /// with nothing created or destroyed. `open_job` deposits the 1500 escrow
+    /// each time, so total deposited is 3 * 1500 across the three jobs.
     #[test]
     fn value_conservation_over_pass_fail_expire() {
         let s = state();
-        let mut inflow: u128 = 0;
-        let mut outflow: u128 = 0;
+        let mut deposited_and_bonded: u128 = 0;
 
         // Job 1: pass at price 800, escrow 1500. awarded_job registers
-        // providers A and B (two bonds in).
+        // providers A and B (two bonds in) and deposits + funds one job.
         let j1 = awarded_job(&s);
-        inflow += 2 * BOND;
-        inflow += 1_500;
+        deposited_and_bonded += 2 * BOND + 1_500;
         deliver(&s, j1);
         as_actor(VERIFIER, 0, 21_000);
-        settlement!(&s).submit_verdict(j1, true, H256::zero()).unwrap();
-        outflow += 800 + 700; // price to A, change to requester
+        settlement!(&s).submit_verdict(j1, true, H256::zero()).unwrap(); // 800 -> A, 700 -> requester
 
         // Job 2: B wins alone, then fails. open_job stamps its own clock
-        // (created at t=1s), so the standard quote/award times apply.
+        // (created at t=1s) and deposits the escrow.
         let j2 = open_job(&s, "cheapest");
+        deposited_and_bonded += 1_500;
         quote(&s, PROV_B, j2, 600, 2_000);
         as_actor(REQUESTER, 0, 12_000);
         market!(&s).award_job(j2).unwrap();
-        inflow += 1_500;
         as_actor(PROV_B, 0, 13_000);
         settlement!(&s).submit_receipt(j2, H256::zero(), "m".into()).unwrap();
         as_actor(VERIFIER, 0, 14_000);
-        settlement!(&s).submit_verdict(j2, false, H256::zero()).unwrap();
-        outflow += 1_500 + SLASH / 2; // refund + slash share
+        settlement!(&s).submit_verdict(j2, false, H256::zero()).unwrap(); // refund 1500 + slash share
 
         // Job 3: A (still bonded at the floor, idle after its pass) wins,
         // then lets the deadline lapse -> expiry, refund, second slash.
         let j3 = open_job(&s, "cheapest");
+        deposited_and_bonded += 1_500;
         quote(&s, PROV_A, j3, 800, 2_000);
         as_actor(REQUESTER, 0, 12_000);
         market!(&s).award_job(j3).unwrap();
-        inflow += 1_500;
         // awarded at t=12s, 30s deadline -> expirable after t=42s.
         as_actor(REQUESTER, 0, 42_001);
         settlement!(&s).expire_job(j3).unwrap();
-        outflow += 1_500 + SLASH / 2; // refund + slash share
 
         let st = s.borrow();
+        let internal_balances: u128 = st.balances.values().sum();
         let locked_bonds: u128 = st.providers.values().map(|p| p.bond_wei).sum();
         assert_eq!(locked_bonds, 2 * BOND - 2 * SLASH); // A and B each slashed once
         assert_eq!(st.retained_wei, SLASH); // two retained halves
-        assert_eq!(inflow, outflow + locked_bonds + st.retained_wei);
+        // A got 800 (j1 price); requester got 700 (j1 change) + 1500 + SLASH/2
+        // (j2 fail) + 1500 + SLASH/2 (j3 expire) = 3700 + SLASH.
+        assert_eq!(internal_balances, 800 + 3_700 + SLASH);
+        // Nothing created or destroyed: in == still-held.
+        assert_eq!(
+            deposited_and_bonded,
+            internal_balances + locked_bonds + st.retained_wei
+        );
     }
 }

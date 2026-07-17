@@ -30,7 +30,12 @@ export async function openrouterSolve(task: Task): Promise<string> {
     body: JSON.stringify({
       model: MODEL,
       messages: [
-        { role: "system", content: "You are a precise coding assistant. Output only code." },
+        {
+          role: "system",
+          content:
+            "You are a precise assistant. Follow the task's output format exactly. " +
+            "Output only the requested content (code or JSON as asked) with no explanation and no markdown fences.",
+        },
         { role: "user", content: task.prompt },
       ],
       max_tokens: 800,

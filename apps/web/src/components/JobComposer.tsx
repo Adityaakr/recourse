@@ -1,10 +1,15 @@
-// Compose and fund a job. Task fixed to the v1 interval-merge challenge; the
-// requester sets terms and funds with one wallet tx on L1.
+// Compose and fund a job. The requester picks a task from the library (each has
+// its own hidden test suite the verifier grades against), sets terms, and funds.
+// Two lanes are visible right here: "Add funds" is the one classic L1 payment
+// (gas) that loads the internal balance; "Fund job" is a gasless injected
+// signature that debits it. After one deposit, many jobs fund with no gas.
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
-import { HOODI_TX } from "../lib/format.js";
-import { useFundJob, type JobTerms } from "../lib/actions.js";
+import { parseEther } from "viem";
+import { TASKS } from "@recourse/tasks";
+import { IDEA_PROGRAM, eth } from "../lib/format.js";
+import { useDeposit, useFundJob, useInternalBalance, type JobTerms } from "../lib/actions.js";
 import { Panel, Mono } from "./ui.js";
 import type { Hex } from "viem";
 
@@ -13,25 +18,87 @@ const POLICIES: { id: JobTerms["policy"]; label: string; blurb: string }[] = [
   { id: "assured", label: "ASSURED", blurb: "best track record wins" },
 ];
 
-export function JobComposer({ programId, onFunded }: { programId: Hex; onFunded: () => void }) {
+const TASK_LIST = Object.values(TASKS);
+
+export function JobComposer({ programId, onFunded, className = "" }: { programId: Hex; onFunded: () => void; className?: string }) {
   const { isConnected } = useAccount();
-  const { fund, isPending, error, reset } = useFundJob(programId);
+  const { balance, refresh } = useInternalBalance(programId);
+  const { deposit, isPending: depositing, error: depositError, reset: resetDeposit } = useDeposit(programId);
+  const { fund, isPending: funding, error: fundError, reset: resetFund } = useFundJob(programId);
+
   const [terms, setTerms] = useState<JobTerms>({
     maxPriceEth: "0.008", escrowEth: "0.01", deadlineSecs: 40, quoteWindowSecs: 24, policy: "cheapest",
+    criteriaHash: TASK_LIST[0]!.criteriaHash, verifierKind: TASK_LIST[0]!.verifierKind,
   });
+  const selectedTask = TASK_LIST.find((t) => t.criteriaHash === terms.criteriaHash) ?? TASK_LIST[0]!;
+  const pickTask = (criteriaHash: string) => {
+    const t = TASK_LIST.find((x) => x.criteriaHash === criteriaHash) ?? TASK_LIST[0]!;
+    setTerms({ ...terms, criteriaHash: t.criteriaHash, verifierKind: t.verifierKind });
+  };
+  const [topUp, setTopUp] = useState("0.05");
   const [tx, setTx] = useState<Hex | null>(null);
+  const [fundMs, setFundMs] = useState<number | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  const escrowWei = safeParseEther(terms.escrowEth);
+  const funded = balance !== null && escrowWei !== null && balance >= escrowWei;
+  const error = depositError ?? fundError;
+  // How many jobs the deposit covers, at the current escrow — makes clear this
+  // is a balance top-up, not the per-job price.
+  const jobsCovered = (() => {
+    const t = Number(topUp), e = Number(terms.escrowEth);
+    if (!isFinite(t) || !isFinite(e) || e <= 0 || t <= 0) return null;
+    return Math.floor(t / e);
+  })();
+
+  async function addFunds() {
+    resetDeposit(); resetFund(); setTx(null);
+    try {
+      const before = balance ?? 0n;
+      await deposit(topUp); // classic L1 tx: user confirms in wallet
+      // The deposit is an L1 message; the program credits it a block or two
+      // after the tx confirms. Poll until the balance rises so we flip to the
+      // gasless "Fund job" button instead of leaving the user on "Add funds".
+      setConfirming(true);
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const b = await refresh();
+        if (b !== null && b > before) break;
+      }
+    } catch {
+      /* surfaced via error */
+    } finally {
+      setConfirming(false);
+    }
+  }
 
   async function submit() {
-    reset(); setTx(null);
-    try { const hash = await fund(terms); setTx(hash); onFunded(); } catch { /* via error */ }
+    resetDeposit(); resetFund(); setTx(null); setFundMs(null);
+    try {
+      const { txHash, ms } = await fund(terms);
+      setTx(txHash); setFundMs(ms);
+      await refresh();
+      onFunded();
+    } catch { /* surfaced via error */ }
   }
 
   return (
-    <Panel label="Compose · Fund" meta="L1">
+    <Panel label="Compose · Fund" meta={funded ? "injected" : "L1 → injected"} className={className}>
       <div className="space-y-3">
-        <div className="border border-border bg-muted/40 px-2.5 py-2">
-          <div className="text-[12px] font-medium">Merge overlapping intervals</div>
-          <div className="mt-0.5 text-[11px] text-muted-fg">graded by hidden unit tests · unit-tests-v1</div>
+        <div>
+          <FieldLabel>Task</FieldLabel>
+          <select value={terms.criteriaHash} onChange={(e) => pickTask(e.target.value)}
+            className="w-full border border-border bg-bg px-2 py-1.5 text-[12px] focus-visible:border-accent">
+            {TASK_LIST.map((t) => <option key={t.id} value={t.criteriaHash}>{t.title}</option>)}
+          </select>
+          <div className="mt-1.5 border border-border bg-muted/40 px-2.5 py-2">
+            <p className="text-[11px] leading-relaxed text-muted-fg">{selectedTask.prompt}</p>
+            <div className="mt-1 text-[10.5px] text-muted-fg">
+              {selectedTask.entry
+                ? <>solution exports <Mono className="text-fg">{selectedTask.entry}()</Mono> · graded by hidden unit tests</>
+                : <>answer graded against a hidden <Mono className="text-fg">JSON schema</Mono></>}
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -54,25 +121,59 @@ export function JobComposer({ programId, onFunded }: { programId: Hex; onFunded:
           </div>
         </div>
 
-        <button type="button" onClick={submit} disabled={!isConnected || isPending}
-          className="w-full bg-accent px-4 py-2 text-[12px] font-bold uppercase tracking-wide text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
-          {!isConnected ? "Connect wallet to fund" : isPending ? "Confirm in wallet…" : `Fund job · ${terms.escrowEth} ETH`}
-        </button>
+        {/* Your prepaid balance held in the program */}
+        <div className="flex items-center justify-between border border-border px-2.5 py-1.5 text-[11px]">
+          <span className="flex items-center gap-1.5 text-muted-fg">
+            Your balance
+            <span className={`text-[10px] uppercase tracking-wide ${funded ? "text-pass" : "text-muted-fg/70"}`}>
+              {balance === null ? "" : funded ? "· gasless ready" : "· add funds"}
+            </span>
+          </span>
+          <Mono className={funded ? "text-pass" : "text-fg"}>
+            {balance === null ? "--" : `${eth(balance)} ETH`}
+          </Mono>
+        </div>
 
-        <p className="text-[10.5px] leading-relaxed text-muted-fg">
-          Funding is your one on-chain payment: it carries the escrow, so it rides <span className="text-fg">L1</span> with gas (~12s).
-          Everything after (quotes, award, delivery, grading) runs <span className="text-fg">gasless</span> on the injected lane, signed by the operators, not you.
-        </p>
+        {funded ? (
+          <button type="button" onClick={submit} disabled={!isConnected || funding}
+            className="w-full bg-accent px-4 py-2 text-[12px] font-bold uppercase tracking-wide text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+            {!isConnected ? "Connect wallet to fund" : funding ? "Sign in wallet…" : `Fund job · ${terms.escrowEth} ETH · gasless`}
+          </button>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="flex items-baseline justify-between">
+              <FieldLabel>Amount to load into your balance</FieldLabel>
+              {jobsCovered !== null && (
+                <span className="text-[10px] text-muted-fg">funds ~{jobsCovered} job{jobsCovered === 1 ? "" : "s"} at {terms.escrowEth} ETH</span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1"><NumInput value={topUp} onChange={setTopUp} /></div>
+              <button type="button" onClick={addFunds} disabled={!isConnected || depositing || confirming}
+                className="whitespace-nowrap border border-accent bg-accent/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+                {!isConnected ? "Connect wallet" : depositing ? "Confirm in wallet…" : confirming ? "Confirming deposit…" : "Add funds · L1 gas"}
+              </button>
+            </div>
+          </div>
+        )}
 
-        {error && <p className="border border-fail/40 bg-fail/10 px-2.5 py-1.5 text-[11px] text-fail">{(error as { shortMessage?: string }).shortMessage ?? "Transaction failed"}</p>}
+        {error &&<p className="border border-fail/40 bg-fail/10 px-2.5 py-1.5 text-[11px] text-fail">{errText(error)}</p>}
         {tx && (
           <p className="text-[11px] text-muted-fg">
-            Funded · <a className="text-lane-l1 hover:underline" href={HOODI_TX(tx)} target="_blank" rel="noreferrer"><Mono>{tx.slice(0, 10)}…</Mono></a> · watch the market fill
+            Funded gasless{fundMs !== null ? ` in ${fundMs}ms` : ""} · <a className="text-lane-injected hover:underline" href={IDEA_PROGRAM(programId)} target="_blank" rel="noreferrer"><Mono>{tx.slice(0, 10)}…</Mono></a> · watch it live on Idea
           </p>
         )}
       </div>
     </Panel>
   );
+}
+
+function safeParseEther(v: string): bigint | null {
+  try { return parseEther(v as `${number}`); } catch { return null; }
+}
+function errText(e: Error): string {
+  const m = (e as { shortMessage?: string }).shortMessage ?? e.message ?? "Transaction failed";
+  return m.length > 160 ? `${m.slice(0, 157)}…` : m;
 }
 
 function FieldLabel({ children }: { children: React.ReactNode }) {

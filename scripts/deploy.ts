@@ -58,10 +58,12 @@ const SLASH_TO_REQUESTER_BPS = Number(
 
 // WVARA seeded into the program's executable balance at create time (12-dec
 // WVARA). Reverse gas: every message the program processes is paid from here.
-// 900 WVARA seed (deployer holds ~2000; ~1000 goes to code validation). The
-// smoke measures the burn so we can size top-ups for the full demo; a top-up
-// script refuels if a long run drains it, and the health script reports it.
-const EXEC_BALANCE_WVARA = 900n * 10n ** 12n;
+// Code validation burns a fixed 1000 WVARA first, so the seed is whatever is
+// left in the deployer's WVARA wallet. Override with RECOURSE_EXEC_BALANCE_WVARA
+// (whole WVARA). The smoke measures the burn so top-ups can be sized for the
+// full demo; a top-up script refuels a long run and the health script reports it.
+const EXEC_BALANCE_WVARA =
+  BigInt(process.env.RECOURSE_EXEC_BALANCE_WVARA ?? "900") * 10n ** 12n;
 
 /** A permit deadline one hour out, in unix SECONDS (EIP-2612 compares against
  *  block.timestamp). */

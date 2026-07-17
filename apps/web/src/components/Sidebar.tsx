@@ -3,13 +3,13 @@
 // source); the in-app views switch the main content.
 
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
-import { LayoutDashboard, ListChecks, Users, LineChart, ExternalLink, Droplets, Code2 as GithubIcon, Wallet, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, Activity, ListChecks, Users, LineChart, ExternalLink, Droplets, Code2 as GithubIcon, Wallet, Moon, Sun } from "lucide-react";
 import { hoodi } from "../lib/chain.js";
-import { shortAddr } from "../lib/format.js";
+import { shortAddr, IDEA_PROGRAM } from "../lib/format.js";
 import { Mono } from "./ui.js";
 import type { Conn } from "../lib/api.js";
 
-export type View = "dashboard" | "jobs" | "providers" | "analytics";
+export type View = "dashboard" | "live" | "jobs" | "providers" | "analytics";
 
 export function Sidebar({ view, onView, programId, conn, theme, onToggleTheme }: {
   view: View; onView: (v: View) => void; programId: string; conn: Conn;
@@ -26,12 +26,13 @@ export function Sidebar({ view, onView, programId, conn, theme, onToggleTheme }:
       <nav className="flex-1 px-3 py-2">
         <Group label="Console">
           <NavItem icon={<LayoutDashboard size={17} />} active={view === "dashboard"} onClick={() => onView("dashboard")}>Dashboard</NavItem>
+          <NavItem icon={<Activity size={17} />} active={view === "live"} onClick={() => onView("live")}>Live</NavItem>
           <NavItem icon={<LineChart size={17} />} active={view === "analytics"} onClick={() => onView("analytics")}>Analytics</NavItem>
           <NavItem icon={<ListChecks size={17} />} active={view === "jobs"} onClick={() => onView("jobs")}>Jobs</NavItem>
           <NavItem icon={<Users size={17} />} active={view === "providers"} onClick={() => onView("providers")}>Providers</NavItem>
         </Group>
         <Group label="Network">
-          <NavLink icon={<ExternalLink size={17} />} href={`https://hoodi.etherscan.io/address/${programId}`}>Program</NavLink>
+          <NavLink icon={<ExternalLink size={17} />} href={IDEA_PROGRAM(programId)}>Program</NavLink>
           <NavLink icon={<Droplets size={17} />} href="https://eth.vara.network/faucet">Faucet</NavLink>
           <NavLink icon={<GithubIcon size={17} />} href="https://github.com/Adityaakr/recourse">Source</NavLink>
         </Group>

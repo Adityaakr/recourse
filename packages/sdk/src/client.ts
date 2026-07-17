@@ -76,6 +76,8 @@ export interface Recourse {
   listJobs(status: Status | null, cursor: number, limit: number): Promise<Job[]>;
   getProvider(actorId: Hex): Promise<Provider | null>;
   getConfig(): Promise<Config>;
+  /** Spendable internal balance (the vault ledger) for an actor. */
+  balanceOf(actorId: Hex): Promise<bigint>;
   disconnect(): Promise<void>;
 }
 
@@ -219,6 +221,11 @@ export async function createRecourse(opts: RecourseOpts): Promise<Recourse> {
     return decodeConfig(r);
   }
 
+  async function balanceOf(actor: Hex): Promise<bigint> {
+    const r = await read("Market", "BalanceOf", [actor]);
+    return r.u128();
+  }
+
   async function disconnect(): Promise<void> {
     clearInterval(reconnectTimer);
     await provider.disconnect?.();
@@ -226,6 +233,6 @@ export async function createRecourse(opts: RecourseOpts): Promise<Recourse> {
 
   return {
     programId, publicClient, account, actorId,
-    l1, injected, read, getJob, listJobs, getProvider, getConfig, disconnect,
+    l1, injected, read, getJob, listJobs, getProvider, getConfig, balanceOf, disconnect,
   };
 }

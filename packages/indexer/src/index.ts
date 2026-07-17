@@ -10,7 +10,8 @@
 // Run: pnpm --filter @recourse/indexer start   (PORT defaults to 8787)
 
 import { createServer } from "node:http";
-import { createRecourse, readDeployment, type Job, type Recourse } from "@recourse/sdk";
+import { createRecourse, readDeployment, getEvidence, getArtifact, type Job, type Recourse } from "@recourse/sdk";
+import type { Hex } from "viem";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const POLL_MS = 2000;
@@ -28,7 +29,9 @@ interface TimelineEvent {
 }
 
 const EVENT_LANE: Record<string, Lane> = {
-  JobCreated: "l1",
+  // Funding now rides the injected lane: the escrow is debited from an internal
+  // balance loaded earlier by a deposit, so create_job carries no value.
+  JobCreated: "injected",
   ProviderRegistered: "l1",
   QuoteSubmitted: "injected",
   JobAwarded: "injected",
@@ -114,6 +117,24 @@ async function main() {
     if (url.pathname === "/api/state") {
       return send(res, 200, { deployment: d, config, jobs, timeline: timeline.slice(-200) });
     }
+    // The verifier's actual grading output (the vitest run) for a job — this is
+    // "how the verifier reached its verdict", fetched off-chain by the same
+    // evidence the on-chain evidenceHash commits to.
+    if (url.pathname.startsWith("/api/evidence/")) {
+      const jobId = Number(url.pathname.split("/").pop());
+      const job = jobs.find((j) => j.id === jobId) ?? null;
+      const evidence = Number.isFinite(jobId) ? getEvidence(jobId) : null;
+      const delivered = job?.receipt ? getArtifact(job.receipt.outputHash as Hex) : null;
+      return send(res, 200, {
+        jobId,
+        pass: job?.verdict?.pass ?? null,
+        evidenceHash: job?.verdict?.evidenceHash ?? null,
+        evidence,          // raw vitest output (per-test pass/fail)
+        outputHash: job?.receipt?.outputHash ?? null,
+        delivered,         // the provider's delivered solution code
+        modelTag: job?.receipt?.modelTag ?? null,
+      });
+    }
     if (url.pathname === "/api/telemetry" && req.method === "POST") {
       let raw = "";
       req.on("data", (c) => (raw += c));
@@ -141,7 +162,18 @@ async function main() {
   // The SDK client self-heals (reconnects to a fresh synced validator in the
   // background), so the poll loop stays simple.
   for (;;) {
-    try { await poll(r); } catch (e) { console.error("[indexer] poll error", String(e)); }
+    try {
+      await poll(r);
+    } catch (e) {
+      const msg = String(e);
+      // Expected during the SDK's background reconnect to a fresh validator;
+      // retry immediately rather than logging a scary error and waiting.
+      if (msg.includes("manually closed") || msg.includes("Connection")) {
+        await new Promise((res) => setTimeout(res, 300));
+        continue;
+      }
+      console.error("[indexer] poll error", msg);
+    }
     await new Promise((res) => setTimeout(res, POLL_MS));
   }
 }
