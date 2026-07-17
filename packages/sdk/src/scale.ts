@@ -69,7 +69,9 @@ export class ScaleReader {
   bytes32(): Hex {
     const slice = this.bytes.slice(this.pos, this.pos + 32);
     this.pos += 32;
-    return `0x${Buffer.from(slice).toString("hex")}`;
+    let hex = "";
+    for (const b of slice) hex += b.toString(16).padStart(2, "0");
+    return `0x${hex}`;
   }
 
   bool(): boolean {

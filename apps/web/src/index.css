@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens — see /brand.md. Dark is the default; .light flips them. */
+:root {
+  --background: 222 30% 6%;
+  --card: 222 26% 9%;
+  --muted: 222 20% 14%;
+  --border: 222 18% 18%;
+  --foreground: 210 20% 96%;
+  --muted-foreground: 215 15% 62%;
+  --primary: 243 75% 66%;
+  --lane-injected: 188 85% 55%;
+  --lane-l1: 255 78% 74%;
+  --pass: 158 68% 50%;
+  --fail: 350 82% 66%;
+  --pending: 40 92% 58%;
+}
+
+.light {
+  --background: 210 20% 99%;
+  --card: 0 0% 100%;
+  --muted: 210 16% 96%;
+  --border: 214 20% 90%;
+  --foreground: 222 30% 12%;
+  --muted-foreground: 215 14% 42%;
+  --primary: 243 62% 56%;
+  --lane-injected: 191 82% 42%;
+  --lane-l1: 256 55% 55%;
+  --pass: 158 62% 38%;
+  --fail: 350 70% 50%;
+  --pending: 36 88% 46%;
+}
+
+* { border-color: hsl(var(--border)); }
+
+html { color-scheme: dark; }
+.light { color-scheme: light; }
+
+body {
+  margin: 0;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Tabular, monospaced numbers everywhere on-chain values appear. */
+.tnum { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* Quiet entrance for streamed events; disabled under reduced motion. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-rise { animation: rise 0.22s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise { animation: none; }
+}
+
+/* Focus ring from tokens. */
+:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
+
+/* Subtle scrollbars in panels. */
+.thin-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 8px; }
