@@ -14,7 +14,7 @@ Project memory (evidence-cited facts, danger zones) lives in `.prism/project-mod
 - M1 — the sails program: market/settlement/reputation services, full state machine,
   gtest invariant suite, sol ABI generation
 - M2 — deploy to hoodi + sdk + lifecycle smoke ✓ DONE (both flows pass live)
-- M3 — provider bots (3 personas) + verifier service (sandboxed vitest, node 20)
+- M3 — bots + verifier + keeper ✓ DONE (both demo acts pass headless on hoodi)
 - M4 — indexer (mirror logs -> sqlite) + react/vite frontend
 - M5 — demo polish: act one (failure path), act two (success path)
 

@@ -1,0 +1,4 @@
+{ "name": "@recourse/keeper", "version": "0.1.0", "type": "module", "main": "src/index.ts",
+  "scripts": { "start": "tsx src/index.ts" },
+  "dependencies": { "@recourse/sdk": "workspace:*", "pino": "^9.5.0", "pino-pretty": "^11.3.0",
+    "viem": "npm:@vara-eth/viem@2.47.7-1" } }

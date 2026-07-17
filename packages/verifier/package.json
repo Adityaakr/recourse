@@ -1,0 +1,5 @@
+{ "name": "@recourse/verifier", "version": "0.1.0", "type": "module", "main": "src/index.ts",
+  "scripts": { "start": "tsx src/index.ts" },
+  "dependencies": { "@recourse/sdk": "workspace:*", "@recourse/tasks": "workspace:*",
+    "ajv": "^8.17.1", "pino": "^9.5.0", "pino-pretty": "^11.3.0", "viem": "npm:@vara-eth/viem@2.47.7-1" },
+  "devDependencies": { "vitest": "^2.1.8" } }

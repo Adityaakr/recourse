@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /Users/adityakrx/recourse/packages/verifier/.sandbox/run-SQq1S0
+
+ ✓ solution.test.js (6 tests) 1ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  12:03:22
+   Duration  131ms (transform 9ms, setup 0ms, collect 5ms, tests 1ms, environment 0ms, prepare 31ms)
+
