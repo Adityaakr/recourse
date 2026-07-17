@@ -72,6 +72,31 @@ the CLI — decide at M2 if it comes to that.
 - ethexe CLI: source build needs `protoc` (brew install protobuf done); rebuild in
   flight at M0 close. Only needed at M2; TS-SDK deploy is the fallback (D3).
 
+## M1 results (2026-07-17)
+
+- Program: `program/app/src/lib.rs`, ~890 logic lines. Services `market` +
+  `settlement` (reputation counters live on Provider; provider/config queries
+  exposed via settlement). All kickoff §5 commands, queries, events.
+- Suite: 21 green (16 service-level unit tests with Syscall shims, 5 gtest
+  integration against real wasm), zero warnings.
+- Value-on-Err PROVEN (gtest `err_reply_returns_value_and_keeps_none`): an
+  Err reply from a payable method leaves zero value with the program.
+- gtest-ethexe models the mirror faithfully: program-to-user value leaves the
+  program balance and does NOT credit user balances in-test (it is claimable
+  on L1 via mirror.claimValue). Conservation asserted program-side; the user
+  claim leg is exercised on hoodi at M2.
+- Empirical ethabi constraints found (recorded in code comments):
+  - `payable` methods REQUIRE the ethabi transport -> create_job params are
+    SolValue-simple (enums as strings, hash as [u8;32]).
+  - bool rejected in event fields (like u8) -> pass/paid are u32 in events.
+  - H256 not SolValue; fine on SCALE-only exports.
+  - [u8;32] event field maps to `uint8[32]` in the sol ABI, not `bytes32`
+    (indexer must decode accordingly).
+- `sol/Recourse.sol` + `idl/recourse.idl` checked in; all 8 spec events on
+  the EVM surface.
+- Deviations: start_job kept (Running is an on-camera beat); job queries live
+  on market service, provider/config queries on settlement.
+
 ## Open items carried to M1/M2
 
 - Value attached to an Err return under `#[export(payable, unwrap_result)]`: write the
