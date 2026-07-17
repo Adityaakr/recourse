@@ -16,15 +16,15 @@
   --grid: 218 16% 12%;
   --fg: 210 16% 88%;
   --muted-fg: 216 12% 52%;
-  --accent: 38 92% 55%;
-  --primary: 38 92% 55%;
+  --accent: 41 90% 56%;
+  --primary: 41 90% 56%;
   --primary-ink: 38 92% 60%;
-  --lane-injected: 187 82% 52%;
-  --lane-l1: 262 84% 74%;
+  --lane-injected: 186 76% 52%;
+  --lane-l1: 249 80% 72%;
   --pass: 146 64% 46%;
   --fail: 358 78% 62%;
-  --pending: 38 92% 55%;
-  --ring: 38 92% 55%;
+  --pending: 41 90% 56%;
+  --ring: 41 90% 56%;
 }
 
 :root[data-theme="light"] {
@@ -41,7 +41,7 @@
   --primary: 28 90% 46%;
   --primary-ink: 28 90% 42%;
   --lane-injected: 190 84% 34%;
-  --lane-l1: 262 60% 52%;
+  --lane-l1: 249 58% 54%;
   --pass: 146 62% 34%;
   --fail: 358 66% 48%;
   --pending: 30 88% 44%;

@@ -3,14 +3,13 @@
 // source); the in-app views switch the main content.
 
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
-import { LayoutDashboard, ListChecks, Users, ExternalLink, Droplets, Code2 as GithubIcon, Wallet, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, ListChecks, Users, LineChart, ExternalLink, Droplets, Code2 as GithubIcon, Wallet, Moon, Sun } from "lucide-react";
 import { hoodi } from "../lib/chain.js";
 import { shortAddr } from "../lib/format.js";
 import { Mono } from "./ui.js";
-import { VaraLogo } from "./VaraLogo.js";
 import type { Conn } from "../lib/api.js";
 
-export type View = "dashboard" | "jobs" | "providers";
+export type View = "dashboard" | "jobs" | "providers" | "analytics";
 
 export function Sidebar({ view, onView, programId, conn, theme, onToggleTheme }: {
   view: View; onView: (v: View) => void; programId: string; conn: Conn;
@@ -18,17 +17,16 @@ export function Sidebar({ view, onView, programId, conn, theme, onToggleTheme }:
 }) {
   return (
     <aside className="flex w-[220px] shrink-0 flex-col border-r bg-sidebar">
-      <div className="flex items-center gap-2.5 px-5 py-5">
-        <VaraLogo size={38} />
-        <div>
-          <div className="text-[15px] font-semibold tracking-tight">recourse</div>
-          <div className="text-[11px] text-muted-fg">outcome router · vara.eth</div>
-        </div>
+      <div className="flex items-baseline gap-2 px-5 py-5">
+        <span className="text-[19px] font-bold lowercase tracking-tight text-fg" style={{ fontFamily: "Inter, sans-serif" }}>recourse</span>
+        <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+        <span className="text-[10px] uppercase tracking-wider text-muted-fg">vara.eth</span>
       </div>
 
       <nav className="flex-1 px-3 py-2">
         <Group label="Console">
           <NavItem icon={<LayoutDashboard size={17} />} active={view === "dashboard"} onClick={() => onView("dashboard")}>Dashboard</NavItem>
+          <NavItem icon={<LineChart size={17} />} active={view === "analytics"} onClick={() => onView("analytics")}>Analytics</NavItem>
           <NavItem icon={<ListChecks size={17} />} active={view === "jobs"} onClick={() => onView("jobs")}>Jobs</NavItem>
           <NavItem icon={<Users size={17} />} active={view === "providers"} onClick={() => onView("providers")}>Providers</NavItem>
         </Group>

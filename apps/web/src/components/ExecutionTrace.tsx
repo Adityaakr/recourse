@@ -25,10 +25,15 @@ export function ExecutionTrace({ job, timeline }: { job: Job | null; timeline: T
         <Empty>Awaiting the first event…</Empty>
       ) : (
         <ol className="relative space-y-2.5 pl-5">
-          <span className="absolute left-[5px] top-1 bottom-1 w-px bg-border" aria-hidden />
-          {events.map((e) => (
+          <span className="absolute left-[5.5px] top-1.5 bottom-1.5 w-px bg-border" aria-hidden />
+          {events.map((e) => {
+            const laneColor = e.lane === "injected" ? "text-lane-injected" : e.lane === "l1" ? "text-lane-l1" : "text-pending";
+            return (
             <li key={e.seq} className="animate-rise relative">
-              <span className={`absolute -left-5 top-1 h-2.5 w-2.5 border border-bg ${e.lane === "injected" ? "bg-lane-injected" : e.lane === "l1" ? "bg-lane-l1" : "bg-muted-fg"}`} aria-hidden />
+              <span className={`absolute -left-[22px] top-[3px] grid h-3 w-3 place-items-center rounded-full ${laneColor}`} aria-hidden>
+                <span className="h-3 w-3 rounded-full bg-current opacity-20" />
+                <span className="absolute h-1.5 w-1.5 rounded-full bg-current" />
+              </span>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[12px] font-medium">{KIND_LABEL[e.kind] ?? e.kind}</span>
                 <LaneBadge lane={e.lane} />
@@ -39,7 +44,8 @@ export function ExecutionTrace({ job, timeline }: { job: Job | null; timeline: T
                 {e.kind === "VerdictSubmitted" && <span className={e.detail.pass ? "text-pass" : "text-fail"}>{e.detail.pass ? "tests passed" : "tests failed"}</span>}
               </div>
             </li>
-          ))}
+            );
+          })}
         </ol>
       )}
     </Panel>

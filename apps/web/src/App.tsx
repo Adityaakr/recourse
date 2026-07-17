@@ -6,6 +6,7 @@ import { JobComposer } from "./components/JobComposer.js";
 import { ProviderMarket } from "./components/ProviderMarket.js";
 import { ExecutionTrace } from "./components/ExecutionTrace.js";
 import { SettlementReceipt } from "./components/SettlementReceipt.js";
+import { Analytics } from "./components/Analytics.js";
 import { StatusPill, Mono, Skeleton, Panel, AddrLink } from "./components/ui.js";
 import { eth } from "./lib/format.js";
 import type { Hex } from "viem";
@@ -36,6 +37,7 @@ export function App() {
               {view === "dashboard" && "fund a job; watch the protocol route, grade, and settle it"}
               {view === "jobs" && "every job routed through the program, newest first"}
               {view === "providers" && "bonded providers and how they have performed"}
+              {view === "analytics" && "live charts over routed jobs, latency, and settlement"}
             </span>
           </div>
           <div className="flex items-center gap-2 border border-border px-2 py-1 text-[10px] uppercase tracking-wide">
@@ -66,6 +68,8 @@ export function App() {
                 </div>
               </div>
             </div>
+          ) : view === "analytics" ? (
+            <Analytics jobs={jobs} timeline={state.timeline} />
           ) : view === "jobs" ? (
             <div className="h-full"><JobsTable jobs={jobs} onSelect={(id) => { setSelected(id); setView("dashboard"); }} /></div>
           ) : (
