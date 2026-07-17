@@ -106,31 +106,40 @@ export async function createRecourse(opts: RecourseOpts): Promise<Recourse> {
   }
 
   // Connect to the first validator that has the program state (fresh programs
-  // may not be on every node yet).
+  // may not be on every node yet). A long-lived validator connection can go
+  // stale (stop seeing new jobs), so we reconnect to a fresh synced validator
+  // periodically in the background - this makes every long-running service
+  // (indexer, keeper, verifier, bots) self-heal.
   let provider!: WsVaraEthProvider;
   let api!: Awaited<ReturnType<typeof createVaraEthApi>>;
   const apiSigner = opts.apiSigner ? account(opts.apiSigner).signer : undefined;
-  outer: for (let round = 0; round < 6; round++) {
-    for (const url of VALIDATOR_WS) {
-      const p = new WsVaraEthProvider(url);
-      try {
-        await p.connect();
-        const a = await createVaraEthApi(p, publicClient, ROUTER_ADDRESS, apiSigner);
-        await a.call.program.calculateReplyForHandle(
-          ZERO_ADDR,
-          programId,
-          encodeCall("Settlement", "GetConfig", []),
-        );
-        provider = p;
-        api = a;
-        break outer;
-      } catch {
-        await p.disconnect?.();
+
+  async function connect(): Promise<void> {
+    for (let round = 0; round < 6; round++) {
+      for (const url of VALIDATOR_WS) {
+        const p = new WsVaraEthProvider(url);
+        try {
+          await p.connect();
+          const a = await createVaraEthApi(p, publicClient, ROUTER_ADDRESS, apiSigner);
+          await a.call.program.calculateReplyForHandle(ZERO_ADDR, programId, encodeCall("Settlement", "GetConfig", []));
+          const old = provider;
+          provider = p;
+          api = a;
+          if (old) await old.disconnect?.().catch(() => {});
+          return;
+        } catch {
+          await p.disconnect?.().catch(() => {});
+        }
       }
+      if (round === 5) throw new Error("no validator has the program state");
+      await sleep(5000);
     }
-    if (round === 5) throw new Error("no validator has the program state");
-    await sleep(5000);
   }
+
+  await connect();
+  // Refresh the connection every 30s so no service ever lags on stale state.
+  const reconnectTimer = setInterval(() => { connect().catch(() => {}); }, 30_000);
+  if (typeof reconnectTimer === "object" && "unref" in reconnectTimer) (reconnectTimer as { unref: () => void }).unref();
 
   async function l1(role: Role, service: ServiceName, method: string, args: unknown[], value: bigint): Promise<Hex> {
     const mirror = getMirrorClient({ address: programId, publicClient, signer: account(role).signer });
@@ -206,6 +215,7 @@ export async function createRecourse(opts: RecourseOpts): Promise<Recourse> {
   }
 
   async function disconnect(): Promise<void> {
+    clearInterval(reconnectTimer);
     await provider.disconnect?.();
   }
 

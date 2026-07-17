@@ -14,6 +14,7 @@ import {
 } from "@recourse/sdk";
 import { taskByCriteria } from "@recourse/tasks";
 import { makePersona, type PersonaName } from "./persona.js";
+import { reportQuoteMs } from "@recourse/sdk";
 
 const log = pino({ transport: { target: "pino-pretty", options: { colorize: true } } });
 const POLL_MS = 2500;
@@ -59,6 +60,7 @@ async function main() {
             const { ms } = await r.injected(persona.role, "Market", "SubmitQuote", [
               job.id, price, persona.promisedLatencyMs,
             ]);
+            await reportQuoteMs(job.id, r.actorId(persona.role), ms);
             quoted.add(job.id);
             log.info({ job: job.id, price: price.toString(), ms }, "quoted (injected)");
           } catch (e) {

@@ -103,7 +103,7 @@ function send(res: import("node:http").ServerResponse, code: number, body: unkno
 
 async function main() {
   const d = readDeployment();
-  const r = await createRecourse({ programId: d.programId, apiSigner: "deployer" });
+  let r = await createRecourse({ programId: d.programId, apiSigner: "deployer" });
   // eslint-disable-next-line no-console
   console.log(`[indexer] watching ${d.programId} on hoodi`);
 
@@ -138,6 +138,8 @@ async function main() {
   });
   server.listen(PORT, () => console.log(`[indexer] http://localhost:${PORT}`));
 
+  // The SDK client self-heals (reconnects to a fresh synced validator in the
+  // background), so the poll loop stays simple.
   for (;;) {
     try { await poll(r); } catch (e) { console.error("[indexer] poll error", String(e)); }
     await new Promise((res) => setTimeout(res, POLL_MS));

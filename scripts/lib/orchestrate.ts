@@ -12,6 +12,7 @@ import {
   type Status,
 } from "@recourse/sdk";
 import { INTERVAL_MERGE } from "@recourse/tasks";
+import { reportQuoteMs } from "@recourse/sdk";
 import { makePersona, type PersonaName } from "../../packages/bots/src/persona.js";
 import { gradeUnitTests } from "../../packages/verifier/src/plugins/unit-tests-v1.js";
 import { putEvidence } from "@recourse/sdk";
@@ -91,6 +92,7 @@ export async function runJob(
       jobId, price, persona.promisedLatencyMs,
     ]);
     quoteMs[name] = ms;
+    await reportQuoteMs(jobId, r.actorId(persona.role), ms);
     log(`  ${name} quoted ${price} wei in ${ms}ms (injected, validator-signed)`);
   }
 

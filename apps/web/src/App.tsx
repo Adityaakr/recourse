@@ -20,11 +20,16 @@ export function App() {
   const [view, setView] = useState<View>("dashboard");
   const [selected, setSelected] = useState<number | null>(null);
   const [detail, setDetail] = useState<number | null>(null);
+  // Follow the newest job by default so a fresh fund is watched live; pinning a
+  // job manually stops the follow until the next fund.
+  const [followLatest, setFollowLatest] = useState(true);
 
   useEffect(() => { document.documentElement.setAttribute("data-theme", theme); }, [theme]);
 
   const jobs = state?.jobs ?? [];
-  useEffect(() => { if (selected === null && jobs.length) setSelected(jobs[jobs.length - 1].id); }, [jobs, selected]);
+  const latestId = jobs.length ? jobs[jobs.length - 1].id : null;
+  useEffect(() => { if (followLatest && latestId !== null) setSelected(latestId); }, [followLatest, latestId]);
+  function pickJob(id: number) { setFollowLatest(false); setSelected(id); }
   const job = useMemo(() => jobs.find((j) => j.id === selected) ?? null, [jobs, selected]);
   const detailJob = useMemo(() => jobs.find((j) => j.id === detail) ?? null, [jobs, detail]);
   const programId = (state?.deployment.programId ?? "0x") as Hex;
@@ -63,8 +68,8 @@ export function App() {
               <Hero jobs={jobs} timeline={state.timeline} />
               <div className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 lg:grid-cols-[300px_1fr_320px]">
                 <div className="flex min-h-0 flex-col gap-2.5">
-                  <JobComposer programId={programId} onFunded={() => {}} />
-                  <JobList jobs={jobs} selected={selected} onSelect={setSelected} onDetail={setDetail} className="min-h-0 flex-1" />
+                  <JobComposer programId={programId} onFunded={() => setFollowLatest(true)} />
+                  <JobList jobs={jobs} selected={selected} following={followLatest} onSelect={pickJob} onDetail={setDetail} className="min-h-0 flex-1" />
                 </div>
                 <ProviderMarket job={job} timeline={state.timeline} />
                 <div className="flex min-h-0 flex-col gap-2.5">
@@ -98,9 +103,9 @@ export function App() {
   );
 }
 
-function JobList({ jobs, selected, onSelect, onDetail, className = "" }: { jobs: Job[]; selected: number | null; onSelect: (id: number) => void; onDetail: (id: number) => void; className?: string }) {
+function JobList({ jobs, selected, following, onSelect, onDetail, className = "" }: { jobs: Job[]; selected: number | null; following?: boolean; onSelect: (id: number) => void; onDetail: (id: number) => void; className?: string }) {
   return (
-    <Panel label="Jobs" meta={`${jobs.length} routed`} className={className}>
+    <Panel label="Jobs" meta={`${jobs.length} routed`} right={following ? <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-fg"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-fg" />following live</span> : undefined} className={className}>
       {jobs.length === 0 ? (
         <p className="py-6 text-center text-[11px] text-muted-fg">No jobs yet. Fund one to begin.</p>
       ) : (
